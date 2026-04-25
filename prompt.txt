@@ -1,0 +1,162 @@
+# JobTracker - Project Summary for Future Coding Agents
+
+## Product Goals
+JobTracker is a full-stack job tracking and discovery application for new-grad and internship positions.
+It auto-scrapes job postings from curated GitHub README lists, displays them in a discovery grid,
+and allows users to apply, dismiss, and track applications on a Kanban-style dashboard.
+
+## Main User Flows
+1. **Sign Up/Sign In**: Supabase Auth (email/password)
+2. **Job Discovery**: Grid of 8 cards from 20 fetched, dismiss/replace animation, apply flow
+3. **Apply Flow**: Click Apply → opens link in new tab → confirm dialog → add to Kanban
+4. **Kanban Board**: Drag & drop between Applied/OA/Interview/Offer/Rejected columns
+5. **Notes**: Per-job notes editable from Kanban detail modal
+6. **Admin**: Password-gated page for job management and manual scrape triggers
+
+## Design Language
+- Dark mode default with shadcn/ui components
+- Tailwind CSS for styling
+- Glassmorphism effects (backdrop-blur, card/50 opacity)
+- Gradient text on hero sections
+- Smooth animations (fade-out on dismiss, drag-and-drop)
+- Toast notifications via sonner
+- Skeleton loading states
+
+## Frontend Architecture
+- **Framework**: Next.js 15 (App Router) + TypeScript
+- **UI**: shadcn/ui + Tailwind CSS
+- **Auth**: Supabase Auth client via React context
+- **State**: React hooks (useState/useEffect/useCallback)
+- **Drag & Drop**: @hello-pangea/dnd
+- **API Client**: Custom fetch wrapper in /lib/api/
+
+### Structure
+```
+frontend/
+  src/
+    app/              # Next.js App Router pages
+      page.tsx        # Landing page
+      login/          # Sign in
+      signup/         # Create account
+      dashboard/      # Job discovery grid
+      kanban/         # Kanban board
+      admin/          # Admin dashboard
+    components/
+      ui/             # shadcn components
+      layout/         # Navbar
+      jobs/           # JobCard
+    hooks/
+      useAuth.tsx     # Auth context provider
+    lib/
+      supabase/       # Supabase client
+      api/            # API client functions
+    types/            # TypeScript interfaces
+```
+
+## Backend Architecture
+- **Runtime**: Node.js + Express + TypeScript
+- **Layers**: Routes → Services → Repositories
+- **Auth**: Supabase JWT verification middleware
+- **Admin**: Simple password-based auth via env var
+- **Scraper**: Markdown table parser + Cheerio enrichment
+- **Scheduler**: node-cron (hourly)
+
+### Structure
+```
+backend/
+  src/
+    index.ts          # Express server entry
+    routes/           # API route handlers
+    services/         # Business logic
+    repositories/     # Database queries
+    scrapers/         # GitHub README parser + job enricher
+    middleware/       # Auth guards
+    config/           # Supabase client
+    cron/             # Scheduler
+    types/            # TypeScript interfaces
+```
+
+## Database Schema (Supabase PostgreSQL)
+- **profiles**: id (FK auth.users), email, full_name
+- **jobs**: company, title, description, salary, location, job_type, application_url, unique_hash
+- **user_tracked_jobs**: user_id, job_id, status (Applied/OA/Interview/Offer/Rejected), notes
+- **user_dismissed_jobs**: user_id, job_id
+- **user_apply_events**: user_id, job_id, event_type
+- RLS enabled on all user tables
+- Auto-create profile on signup via database trigger
+
+## API Contract
+All responses: `{ success: boolean, data?: T, error?: string }`
+
+### Jobs
+- `GET /api/jobs/discover` (auth) - 20 jobs excluding dismissed/tracked
+- `GET /api/jobs/:id` - Single job details
+- `POST /api/jobs/:id/dismiss` (auth) - Dismiss job
+- `POST /api/jobs/:id/apply-clicked` (auth) - Record click
+- `POST /api/jobs/:id/apply-confirmed` (auth) - Confirm + track
+
+### Tracked Jobs (Kanban)
+- `GET /api/tracked-jobs` (auth) - All tracked jobs with job details
+- `PATCH /api/tracked-jobs/:id/status` (auth) - Update status
+- `PATCH /api/tracked-jobs/:id/notes` (auth) - Update notes
+- `PATCH /api/tracked-jobs/:id` (auth) - Update status + notes
+
+### Admin
+- `POST /api/admin/login` - Validate password
+- `GET /api/admin/jobs` (admin) - Paginated job list with search
+- `PATCH /api/admin/jobs/:id` (admin) - Edit job fields
+- `POST /api/admin/scrape/run` (admin) - Run full scrape
+- `POST /api/admin/scrape/single` (admin) - Scrape single URL
+
+## Scraping Behavior
+- **Sources**: Two GitHub README markdown tables (New Grad 2027, Summer 2027 Internships)
+- **Parsing**: Regex-based markdown table parser extracting Company/Role/Location/Link/Date
+- **Enrichment**: Attempts to scrape application URL for description/salary (best-effort, 8s timeout)
+- **Dedup**: MD5 hash of normalized company+title+url
+- **First run**: Scrapes 30 most recent jobs
+- **Subsequent**: Scrapes all, skips existing
+- **Schedule**: Every hour via node-cron
+- **Never deletes** existing jobs
+
+## Environment Variables
+
+### Backend (.env)
+```
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_ANON_KEY=your-anon-key
+ADMIN_PASSWORD=admin2801234
+PORT=3001
+FRONTEND_URL=http://localhost:3000
+```
+
+### Frontend (.env.local)
+```
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+NEXT_PUBLIC_API_URL=http://localhost:3001
+```
+
+## Deployment Instructions
+1. Create Supabase project at supabase.com
+2. Run `supabase/migrations/001_initial_schema.sql` in SQL Editor
+3. Copy auth anon key and service role key from Supabase settings
+4. Deploy backend to Render (or any Node.js host)
+   - Set env vars from backend/.env.example
+   - Build: `npm run build`, Start: `npm start`
+5. Deploy frontend to Vercel
+   - Set env vars from frontend/.env.example
+   - Set NEXT_PUBLIC_API_URL to your deployed backend URL
+6. Verify auth flow and trigger initial scrape from /admin
+
+## Known Future Improvements
+- Chatbot RAG system for job/application help
+- AI resume tailoring before submission
+- Smart notifications for follow-up emails, interview prep, deadlines
+- Interview preparation tools and tracking
+- Email reminders for applications
+- Resume/document storage
+- OAuth providers (Google, GitHub)
+- Mobile-responsive sidebar navigation
+- Job search/filter on discovery page
+- Analytics dashboard with application funnel
