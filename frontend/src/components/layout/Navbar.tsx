@@ -13,7 +13,8 @@ export function Navbar() {
 
   const navLinks = user
     ? [
-        { href: '/dashboard', label: 'Jobs' },
+        { href: '/dashboard', label: 'Discover' },
+        { href: '/jobs', label: 'Tracker' },
         { href: '/kanban', label: 'Kanban' },
       ]
     : [];

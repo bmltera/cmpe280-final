@@ -117,9 +117,17 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">Jobs</h1>
-        <p className="mt-1 text-muted-foreground">Discover and apply to the latest positions</p>
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Discover Jobs</h1>
+          <p className="mt-1 text-muted-foreground">Find and track new opportunities automatically</p>
+        </div>
+        <button 
+          onClick={() => router.push('/jobs')}
+          className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 gap-2"
+        >
+          View My Applications
+        </button>
       </div>
 
       {/* Stats Row */}
