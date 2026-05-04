@@ -14,6 +14,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { CompanyLogo } from '@/components/jobs/CompanyLogo';
+import { splitLocationLines } from '@/lib/utils';
 
 interface JobCardProps {
   job: Job;
@@ -26,13 +27,14 @@ interface JobCardProps {
 
 export function JobCard({ job, onDismiss, onApply, onApplyConfirm, onApplyCancel, cardState }: JobCardProps) {
   const [showDetail, setShowDetail] = useState(false);
+  const locationLines = splitLocationLines(job.location);
 
   const isFading = cardState === 'fading_out';
 
   return (
     <>
       <Card
-        className={`group relative overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm transition-all duration-500 hover:border-border hover:shadow-lg hover:shadow-primary/5 ${
+        className={`group relative flex h-full flex-col overflow-hidden border-border/50 bg-card/80 backdrop-blur-sm transition-all duration-500 hover:border-border hover:shadow-lg hover:shadow-primary/5 ${
           isFading ? 'opacity-0 scale-95 translate-y-2' : 'opacity-100'
         }`}
       >
@@ -51,49 +53,59 @@ export function JobCard({ job, onDismiss, onApply, onApplyConfirm, onApplyCancel
         </button>
 
         <CardContent
-          className="cursor-pointer p-5"
+          className="flex min-h-0 flex-1 cursor-pointer flex-col p-5"
           onClick={() => cardState === 'default' && setShowDetail(true)}
         >
-          {/* Title & Company */}
-          <div className="flex items-start gap-3 pr-8">
-            <CompanyLogo company={job.company} size={40} />
-            <div className="min-w-0">
-              <h3 className="text-base font-semibold leading-tight line-clamp-2">{job.title}</h3>
-              <p className="mt-1 text-sm text-muted-foreground truncate">{job.company}</p>
+          <div className="flex min-h-0 flex-1 flex-col">
+            {/* Title & Company */}
+            <div className="flex items-start gap-3 pr-8">
+              <CompanyLogo company={job.company} size={40} />
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold leading-tight line-clamp-2">{job.title}</h3>
+                <p className="mt-1 text-sm text-muted-foreground truncate">{job.company}</p>
+              </div>
+            </div>
+
+            {/* Description */}
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground line-clamp-3">
+              {job.description || 'Description unavailable — click to view details.'}
+            </p>
+
+            {/* Location & Salary */}
+            <div className="mt-4 flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1 space-y-0.5 text-xs text-muted-foreground">
+                {locationLines.length === 0 ? (
+                  <span className="block">Location not listed</span>
+                ) : (
+                  locationLines.map((line, i) => (
+                    <span key={`${i}-${line}`} className="block leading-snug line-clamp-2">
+                      {line}
+                    </span>
+                  ))
+                )}
+              </div>
+              <span className="shrink-0 text-right text-xs font-medium text-foreground">
+                {job.salary || 'Salary not listed'}
+              </span>
+            </div>
+
+            {/* Tags */}
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {job.job_type && (
+                <Badge variant="secondary" className="text-[10px] px-2 py-0">
+                  {job.job_type}
+                </Badge>
+              )}
+              {job.source_name && (
+                <Badge variant="outline" className="text-[10px] px-2 py-0">
+                  {job.source_name}
+                </Badge>
+              )}
             </div>
           </div>
 
-          {/* Description */}
-          <p className="mt-3 text-xs leading-relaxed text-muted-foreground line-clamp-3">
-            {job.description || 'Description unavailable — click to view details.'}
-          </p>
-
-          {/* Location & Salary */}
-          <div className="mt-4 flex items-center justify-between gap-2">
-            <span className="text-xs text-muted-foreground truncate">
-              {job.location || 'Location not listed'}
-            </span>
-            <span className="shrink-0 text-xs font-medium text-foreground">
-              {job.salary || 'Salary not listed'}
-            </span>
-          </div>
-
-          {/* Tags */}
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {job.job_type && (
-              <Badge variant="secondary" className="text-[10px] px-2 py-0">
-                {job.job_type}
-              </Badge>
-            )}
-            {job.source_name && (
-              <Badge variant="outline" className="text-[10px] px-2 py-0">
-                {job.source_name}
-              </Badge>
-            )}
-          </div>
-
-          {/* Apply — after click, confirmation opens in a popup */}
-          <div className="mt-4">
+          {/* Apply — pinned to bottom of card */}
+          <div className="mt-auto shrink-0 pt-4">
             {cardState === 'confirming' ? (
               <p className="text-center text-xs text-muted-foreground">
                 Use the dialog to confirm whether you submitted an application.
@@ -169,8 +181,16 @@ export function JobCard({ job, onDismiss, onApply, onApplyConfirm, onApplyCancel
             </div>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              {job.location && <Badge variant="secondary">{job.location}</Badge>}
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              {locationLines.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  {locationLines.map((line, i) => (
+                    <Badge key={`${i}-${line}`} variant="secondary" className="w-fit text-left font-normal">
+                      {line}
+                    </Badge>
+                  ))}
+                </div>
+              )}
               {job.job_type && <Badge variant="outline">{job.job_type}</Badge>}
             </div>
             {job.salary && (
