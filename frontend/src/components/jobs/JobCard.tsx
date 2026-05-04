@@ -5,7 +5,14 @@ import { Job, JobCardState } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 
 interface JobCardProps {
   job: Job;
@@ -30,7 +37,9 @@ export function JobCard({ job, onDismiss, onApply, onApplyConfirm, onApplyCancel
       >
         {/* Dismiss Button */}
         <button
+          type="button"
           onClick={(e) => {
+            e.preventDefault();
             e.stopPropagation();
             onDismiss(job.id);
           }}
@@ -77,40 +86,19 @@ export function JobCard({ job, onDismiss, onApply, onApplyConfirm, onApplyCancel
             )}
           </div>
 
-          {/* Apply Button or Confirm Flow */}
+          {/* Apply — after click, confirmation opens in a popup */}
           <div className="mt-4">
             {cardState === 'confirming' ? (
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-center">Did you finish applying?</p>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    className="flex-1"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onApplyConfirm(job.id);
-                    }}
-                  >
-                    Yes, I applied
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onApplyCancel(job.id);
-                    }}
-                  >
-                    No, not yet
-                  </Button>
-                </div>
-              </div>
+              <p className="text-center text-xs text-muted-foreground">
+                Use the dialog to confirm whether you submitted an application.
+              </p>
             ) : (
               <Button
+                type="button"
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                 size="sm"
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   onApply(job.id);
                 }}
@@ -121,6 +109,46 @@ export function JobCard({ job, onDismiss, onApply, onApplyConfirm, onApplyCancel
           </div>
         </CardContent>
       </Card>
+
+      {/* Did you apply? — opens after Apply / Apply Now */}
+      <Dialog
+        open={cardState === 'confirming'}
+        onOpenChange={(open) => {
+          if (!open) onApplyCancel(job.id);
+        }}
+      >
+        <DialogContent showCloseButton className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Did you apply?</DialogTitle>
+            <DialogDescription>
+              If you completed an application for this role, we&apos;ll add it to your Kanban board under
+              Applied. Choose No if you still need to finish or haven&apos;t applied yet.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation();
+                onApplyCancel(job.id);
+              }}
+            >
+              No, not yet
+            </Button>
+            <Button
+              type="button"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={(e) => {
+                e.stopPropagation();
+                onApplyConfirm(job.id);
+              }}
+            >
+              Yes, I applied
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Detail Modal */}
       <Dialog open={showDetail} onOpenChange={setShowDetail}>
@@ -154,16 +182,17 @@ export function JobCard({ job, onDismiss, onApply, onApplyConfirm, onApplyCancel
             )}
             <div className="flex gap-2 pt-2">
               <Button
+                type="button"
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                onClick={() => {
-                  window.open(job.application_url, '_blank');
+                onClick={(e) => {
+                  e.preventDefault();
                   setShowDetail(false);
                   onApply(job.id);
                 }}
               >
                 Apply Now
               </Button>
-              <Button variant="outline" onClick={() => setShowDetail(false)}>
+              <Button type="button" variant="outline" onClick={() => setShowDetail(false)}>
                 Close
               </Button>
             </div>

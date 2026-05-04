@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 
 export default function DashboardPage() {
   const { user, loading: authLoading, getToken } = useAuth();
+  const userId = user?.id;
   const router = useRouter();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [displayJobs, setDisplayJobs] = useState<Job[]>([]);
@@ -42,9 +43,11 @@ export default function DashboardPage() {
     setLoading(false);
   }, [getToken]);
 
+  // Key on user id, not `user` — token refresh on tab focus gives a new User object and would refetch/reset the grid.
   useEffect(() => {
-    if (user) fetchJobs();
-  }, [user, fetchJobs]);
+    if (!userId) return;
+    fetchJobs();
+  }, [userId, fetchJobs]);
 
   const replaceCard = (jobId: string) => {
     const currentIds = new Set(displayJobs.map(j => j.id));
@@ -107,7 +110,10 @@ export default function DashboardPage() {
   };
 
   const handleApplyCancel = (jobId: string) => {
-    setCardStates(prev => ({ ...prev, [jobId]: 'default' }));
+    setCardStates((prev) => {
+      if (prev[jobId] === 'fading_out') return prev;
+      return { ...prev, [jobId]: 'default' };
+    });
   };
 
   if (authLoading || !user) {

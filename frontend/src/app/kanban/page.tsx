@@ -24,6 +24,7 @@ const COLUMNS: { id: KanbanStatus; label: string; color: string }[] = [
 
 export default function KanbanPage() {
   const { user, loading: authLoading, getToken } = useAuth();
+  const userId = user?.id;
   const router = useRouter();
   const [trackedJobs, setTrackedJobs] = useState<TrackedJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,9 +47,11 @@ export default function KanbanPage() {
     setLoading(false);
   }, [getToken]);
 
+  // Key on user id — session refresh on tab focus must not refetch and flash the board.
   useEffect(() => {
-    if (user) fetchJobs();
-  }, [user, fetchJobs]);
+    if (!userId) return;
+    fetchJobs();
+  }, [userId, fetchJobs]);
 
   const getColumnJobs = (status: KanbanStatus) =>
     trackedJobs.filter((j) => j.status === status);
