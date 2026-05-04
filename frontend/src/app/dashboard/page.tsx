@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Job, JobCardState } from '@/types';
@@ -8,6 +8,28 @@ import { getDiscoverJobs, dismissJob, applyClicked, applyConfirmed } from '@/lib
 import { JobCard } from '@/components/jobs/JobCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
+
+const DISPLAY_COUNT = 8;
+
+/** Keep the grid at `max` cards by filling from `pool` with jobs not already shown. */
+function fillDisplaySlots(
+  currentDisplay: Job[],
+  removedJobId: string,
+  pool: Job[],
+  max: number
+): Job[] {
+  const filtered = currentDisplay.filter((j) => j.id !== removedJobId);
+  const ids = new Set(filtered.map((j) => j.id));
+  const out = [...filtered];
+  for (const j of pool) {
+    if (out.length >= max) break;
+    if (!ids.has(j.id)) {
+      out.push(j);
+      ids.add(j.id);
+    }
+  }
+  return out;
+}
 
 export default function DashboardPage() {
   const { user, loading: authLoading, getToken } = useAuth();
@@ -18,7 +40,14 @@ export default function DashboardPage() {
   const [cardStates, setCardStates] = useState<Record<string, JobCardState>>({});
   const [loading, setLoading] = useState(true);
 
-  const DISPLAY_COUNT = 8;
+  const jobsRef = useRef<Job[]>([]);
+  const displayJobsRef = useRef<Job[]>([]);
+  useEffect(() => {
+    jobsRef.current = jobs;
+  }, [jobs]);
+  useEffect(() => {
+    displayJobsRef.current = displayJobs;
+  }, [displayJobs]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -49,17 +78,35 @@ export default function DashboardPage() {
     fetchJobs();
   }, [userId, fetchJobs]);
 
-  const replaceCard = (jobId: string) => {
-    const currentIds = new Set(displayJobs.map(j => j.id));
-    currentIds.delete(jobId);
-    const nextJob = jobs.find(j => !currentIds.has(j.id) && j.id !== jobId);
+  const refillGridAfterJobRemoved = useCallback(
+    async (removedJobId: string) => {
+      const token = await getToken();
+      if (!token) return;
 
-    setDisplayJobs(prev => {
-      const filtered = prev.filter(j => j.id !== jobId);
-      if (nextJob) return [...filtered, nextJob];
-      return filtered;
-    });
-  };
+      const res = await getDiscoverJobs(token);
+      const freshPool = res.success && res.data ? res.data : null;
+      if (freshPool) {
+        setJobs(freshPool);
+      }
+
+      // Prefer fresh API list (excludes dismissed/tracked). On failure, drop removed id from stale pool so we never re-show that card.
+      const poolRaw = freshPool ?? jobsRef.current;
+      const pool = poolRaw.filter((j) => j.id !== removedJobId);
+
+      const prev = displayJobsRef.current;
+      const nextDisplay = fillDisplaySlots(prev, removedJobId, pool, DISPLAY_COUNT);
+
+      setDisplayJobs(nextDisplay);
+      setCardStates((prevStates) => {
+        const next: Record<string, JobCardState> = {};
+        for (const j of nextDisplay) {
+          next[j.id] = prevStates[j.id] ?? 'default';
+        }
+        return next;
+      });
+    },
+    [getToken]
+  );
 
   const handleDismiss = async (jobId: string) => {
     // Start fade animation
@@ -70,9 +117,8 @@ export default function DashboardPage() {
       await dismissJob(jobId, token);
     }
 
-    // After animation, replace the card
     setTimeout(() => {
-      replaceCard(jobId);
+      void refillGridAfterJobRemoved(jobId);
       toast.success('Job dismissed');
     }, 500);
   };
@@ -102,7 +148,7 @@ export default function DashboardPage() {
         toast.success('Application tracked! Added to your Kanban board.');
         // Fade out and replace
         setCardStates(prev => ({ ...prev, [jobId]: 'fading_out' }));
-        setTimeout(() => replaceCard(jobId), 500);
+        setTimeout(() => void refillGridAfterJobRemoved(jobId), 500);
       } else {
         toast.error('Failed to confirm application');
       }
