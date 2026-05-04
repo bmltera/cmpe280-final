@@ -128,19 +128,6 @@ export default function DashboardPage() {
         <p className="mt-1 text-muted-foreground">Discover and apply to the latest positions</p>
       </div>
 
-      {/* Stats Row */}
-      <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {[
-          { label: 'Available Jobs', value: displayJobs.length, color: 'text-emerald-500' },
-          { label: 'In Pool', value: jobs.length, color: 'text-blue-500' },
-        ].map((stat) => (
-          <div key={stat.label} className="rounded-xl border border-border/50 bg-card/50 p-4">
-            <p className="text-xs text-muted-foreground">{stat.label}</p>
-            <p className={`mt-1 text-2xl font-bold ${stat.color}`}>{stat.value}</p>
-          </div>
-        ))}
-      </div>
-
       {/* Job Grid */}
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
