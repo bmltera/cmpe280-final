@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { CompanyLogo } from '@/components/jobs/CompanyLogo';
 
 const COLUMNS: { id: KanbanStatus; label: string; color: string }[] = [
   { id: 'Applied', label: 'Applied', color: 'bg-blue-500/10 border-blue-500/20 text-blue-400' },
@@ -160,8 +161,13 @@ export default function KanbanPage() {
                                 }}
                               >
                                 <CardContent className="p-3.5">
-                                  <p className="text-sm font-semibold line-clamp-1">{tracked.job?.title || 'Unknown'}</p>
-                                  <p className="mt-0.5 text-xs text-muted-foreground">{tracked.job?.company || 'Unknown'}</p>
+                                  <div className="flex items-start gap-2.5">
+                                    <CompanyLogo company={tracked.job?.company || 'Unknown'} size={28} />
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-semibold line-clamp-1">{tracked.job?.title || 'Unknown'}</p>
+                                      <p className="mt-0.5 text-xs text-muted-foreground truncate">{tracked.job?.company || 'Unknown'}</p>
+                                    </div>
+                                  </div>
                                   <p className="mt-1 text-[10px] text-muted-foreground truncate">
                                     {tracked.job?.location || ''}
                                   </p>
@@ -197,9 +203,12 @@ export default function KanbanPage() {
           </DialogHeader>
           {selectedJob && (
             <div className="space-y-4">
-              <div>
-                <p className="text-sm text-muted-foreground">{selectedJob.job?.company}</p>
-                <p className="text-xs text-muted-foreground">{selectedJob.job?.location}</p>
+              <div className="flex items-start gap-3">
+                <CompanyLogo company={selectedJob.job?.company || 'Unknown'} size={48} />
+                <div className="min-w-0">
+                  <p className="text-sm text-muted-foreground">{selectedJob.job?.company}</p>
+                  <p className="text-xs text-muted-foreground">{selectedJob.job?.location}</p>
+                </div>
               </div>
               <div className="flex gap-2">
                 <Badge>{selectedJob.status}</Badge>

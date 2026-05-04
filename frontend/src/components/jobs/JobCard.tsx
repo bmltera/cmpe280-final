@@ -13,6 +13,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { CompanyLogo } from '@/components/jobs/CompanyLogo';
 
 interface JobCardProps {
   job: Job;
@@ -54,8 +55,13 @@ export function JobCard({ job, onDismiss, onApply, onApplyConfirm, onApplyCancel
           onClick={() => cardState === 'default' && setShowDetail(true)}
         >
           {/* Title & Company */}
-          <h3 className="pr-8 text-base font-semibold leading-tight line-clamp-2">{job.title}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{job.company}</p>
+          <div className="flex items-start gap-3 pr-8">
+            <CompanyLogo company={job.company} size={40} />
+            <div className="min-w-0">
+              <h3 className="text-base font-semibold leading-tight line-clamp-2">{job.title}</h3>
+              <p className="mt-1 text-sm text-muted-foreground truncate">{job.company}</p>
+            </div>
+          </div>
 
           {/* Description */}
           <p className="mt-3 text-xs leading-relaxed text-muted-foreground line-clamp-3">
@@ -154,8 +160,13 @@ export function JobCard({ job, onDismiss, onApply, onApplyConfirm, onApplyCancel
       <Dialog open={showDetail} onOpenChange={setShowDetail}>
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl">{job.title}</DialogTitle>
-            <DialogDescription>{job.company}</DialogDescription>
+            <div className="flex items-start gap-4">
+              <CompanyLogo company={job.company} size={56} />
+              <div className="min-w-0">
+                <DialogTitle className="text-xl leading-tight">{job.title}</DialogTitle>
+                <DialogDescription className="mt-1">{job.company}</DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
