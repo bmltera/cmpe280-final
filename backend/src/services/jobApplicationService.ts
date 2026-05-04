@@ -3,12 +3,14 @@ import { supabaseAdmin } from '../config/supabase';
 export class JobApplicationService {
   async processParsedEmail(userId: string, parsed: any) {
     // 1. Check if application already exists for this user, company, role, thread
-    const { data: existingApp } = await supabaseAdmin
+    const { data: existingApps } = await supabaseAdmin
       .from('job_applications')
       .select('id, status')
       .eq('user_id', userId)
       .eq('gmail_thread_id', parsed.gmail_thread_id)
-      .single();
+      .limit(1);
+
+    const existingApp = existingApps && existingApps.length > 0 ? existingApps[0] : null;
 
     let applicationId = null;
     let isNew = false;
@@ -32,14 +34,16 @@ export class JobApplicationService {
       }
     } else {
       isNew = true;
-      // Also check if same company and role exists but different thread
-      const { data: similarApp } = await supabaseAdmin
+      const { data: similarApps } = await supabaseAdmin
         .from('job_applications')
         .select('id, status')
         .eq('user_id', userId)
         .ilike('company', parsed.company)
         .ilike('role', parsed.role)
-        .single();
+        .order('last_updated', { ascending: false })
+        .limit(1);
+        
+      const similarApp = similarApps && similarApps.length > 0 ? similarApps[0] : null;
         
       if (similarApp) {
         applicationId = similarApp.id;
@@ -169,5 +173,24 @@ export class JobApplicationService {
 
     if (error) throw error;
     return data;
+  }
+
+  async deleteApplication(userId: string, id: string) {
+    // Make sure user owns it
+    const { data: app } = await supabaseAdmin
+      .from('job_applications')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .single();
+      
+    if (!app) throw new Error('Application not found');
+
+    const { error } = await supabaseAdmin
+      .from('job_applications')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
   }
 }

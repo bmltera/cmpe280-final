@@ -4,9 +4,11 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { MoreVertical, Mail, RefreshCw, ChevronDown, Check, ExternalLink } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { MoreVertical, Mail, RefreshCw, ChevronDown, Check, ExternalLink, Trash2, AlertCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { toast } from 'sonner';
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<any[]>([]);
@@ -15,6 +17,8 @@ export default function JobsPage() {
   const [selectedJob, setSelectedJob] = useState<any>(null);
   const [timeline, setTimeline] = useState<any[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [idToDelete, setIdToDelete] = useState<string | null>(null);
   
   const supabase = createClient();
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
@@ -146,6 +150,49 @@ export default function JobsPage() {
     }
   };
 
+  const handleDelete = (jobId: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    setIdToDelete(jobId);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!idToDelete) return;
+    
+    const jobId = idToDelete;
+    const promise = (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const res = await fetch(`${API_URL}/jobs/${jobId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to delete');
+      
+      setJobs(jobs.filter(j => j.id !== jobId));
+      if (selectedJob && selectedJob.id === jobId) {
+        setIsDrawerOpen(false);
+        setSelectedJob(null);
+      }
+      return data;
+    })();
+
+    toast.promise(promise, {
+      loading: 'Removing application...',
+      success: 'Application removed successfully',
+      error: (err) => err.message || 'Failed to remove application',
+    });
+
+    setIsDeleteDialogOpen(false);
+    setIdToDelete(null);
+  };
+
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
       'offer': { label: 'Offer', color: 'bg-green-500 hover:bg-green-600' },
@@ -238,10 +285,16 @@ export default function JobsPage() {
                           <ExternalLink className="w-4 h-4" />
                         </a>
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0" onClick={(e) => e.stopPropagation()}>
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button
+                                variant="ghost"
+                                className="h-8 w-8 p-0"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            }
+                          >
+                            <MoreVertical className="h-4 w-4" />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={(e) => updateStatus(job.id, 'applied', e)}>Set as Applied</DropdownMenuItem>
@@ -249,6 +302,13 @@ export default function JobsPage() {
                             <DropdownMenuItem onClick={(e) => updateStatus(job.id, 'interview_scheduled', e)}>Set as Interview</DropdownMenuItem>
                             <DropdownMenuItem onClick={(e) => updateStatus(job.id, 'offer', e)}>Set as Offer</DropdownMenuItem>
                             <DropdownMenuItem onClick={(e) => updateStatus(job.id, 'rejected', e)}>Set as Rejected</DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem 
+                              className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-900/20"
+                              onClick={(e) => handleDelete(job.id, e)}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" /> Remove
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -280,10 +340,15 @@ export default function JobsPage() {
                 
                 <div className="flex gap-2">
                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="w-full justify-between dark:border-gray-700">
-                        Change Status <ChevronDown className="h-4 w-4 ml-2 opacity-50" />
-                      </Button>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          variant="outline"
+                          className="w-full justify-between dark:border-gray-700"
+                        />
+                      }
+                    >
+                      Change Status <ChevronDown className="h-4 w-4 ml-2 opacity-50" />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="w-full">
                       <DropdownMenuItem onClick={() => updateStatus(selectedJob.id, 'applied')}>
@@ -303,6 +368,13 @@ export default function JobsPage() {
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  <Button 
+                    variant="outline" 
+                    className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900/30 dark:hover:bg-red-900/20"
+                    onClick={() => handleDelete(selectedJob.id)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                   <a 
                     href={`https://mail.google.com/mail/u/0/#inbox/${selectedJob.gmail_thread_id}`} 
                     target="_blank" 
@@ -352,6 +424,31 @@ export default function JobsPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <AlertDialogTitle>Remove Application</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription>
+              Are you sure you want to remove this application? This action cannot be undone and will remove the application from your tracking list.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDelete}
+              className="bg-red-600 hover:bg-red-700 text-white border-none"
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

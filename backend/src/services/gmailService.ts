@@ -58,10 +58,14 @@ export class GmailService {
       if (data.refresh_token) {
         try {
           const { credentials } = await this.oauth2Client.refreshAccessToken();
-          await supabaseAdmin.from('user_tokens').update({
+          const updateData: any = {
             access_token: credentials.access_token,
             expiry: credentials.expiry_date ? new Date(credentials.expiry_date).toISOString() : data.expiry,
-          }).eq('user_id', userId);
+          };
+          if (credentials.refresh_token) {
+            updateData.refresh_token = credentials.refresh_token;
+          }
+          await supabaseAdmin.from('user_tokens').update(updateData).eq('user_id', userId);
         } catch (e) {
           console.error('Failed to refresh token', e);
           throw new Error('Failed to refresh Gmail token. Please reconnect.');
@@ -79,9 +83,27 @@ export class GmailService {
       '"interview"',
       '"unfortunately"',
       '"offer"',
-      '"next steps"'
+      '"next steps"',
+      '"confirmation of application"'
     ];
-    const query = keywords.join(' OR ');
+    // Exclude common newsletter/marketing terms from the search itself
+    const excludeTerms = [
+      'newsletter',
+      'marketing',
+      'digest',
+      'summary',
+      'unsubscribe',
+      'weekly',
+      'daily',
+      '"new jobs for you"',
+      '"jobs you might like"',
+      '"job alert"',
+      '"recommended jobs"',
+      '"view more jobs"',
+      '"latest job openings"'
+    ];
+    
+    const query = `(${keywords.join(' OR ')}) -{${excludeTerms.join(' ')}}`;
 
     const res = await gmail.users.messages.list({
       userId: 'me',
@@ -97,16 +119,21 @@ export class GmailService {
     for (const msg of messages) {
       if (!msg.id) continue;
       
-      const email = await gmail.users.messages.get({
-        userId: 'me',
-        id: msg.id,
-        format: 'full',
-      });
-      
-      const parsed = this.parseEmail(email.data);
-      if (parsed) {
-        await jobAppService.processParsedEmail(userId, parsed);
-        syncedCount++;
+      try {
+        const email = await gmail.users.messages.get({
+          userId: 'me',
+          id: msg.id,
+          format: 'full',
+        });
+        
+        const parsed = this.parseEmail(email.data);
+        if (parsed) {
+          await jobAppService.processParsedEmail(userId, parsed);
+          syncedCount++;
+        }
+      } catch (e) {
+        console.error(`Failed to process message ${msg.id}:`, e);
+        // Continue to next message instead of crashing the whole sync
       }
     }
     
@@ -127,22 +154,53 @@ export class GmailService {
     const snippetLower = snippet.toLowerCase();
     const bodyText = (subjectLower + " " + snippetLower);
 
-    // Filter out obviously non-job emails
-    if (bodyText.includes('newsletter') || bodyText.includes('marketing') || bodyText.includes('unsubscribe')) {
+    // 1. Filter out obviously non-job emails (Marketing, Newsletters, Digests)
+    const negativeKeywords = [
+      'newsletter', 'marketing', 'unsubscribe', 'digest', 'summary', 
+      'weekly', 'daily', 'notification', 'alert', 'recommended', 
+      'new jobs', 'latest openings', 'matches your search', 'sponsored',
+      'advertisement', 'privacy policy', 'terms of service', 'feedback',
+      'survey', 'webinar', 'event', 'promotion'
+    ];
+
+    if (negativeKeywords.some(kw => bodyText.includes(kw))) {
+      return null;
+    }
+
+    // 2. Check for List-Unsubscribe header (strong indicator of a newsletter)
+    if (headers.some((h: any) => h.name.toLowerCase() === 'list-unsubscribe')) {
+      return null;
+    }
+
+    // 3. Ensure the email is actually about a specific job application
+    const applicationKeywords = [
+      'applied', 'application', 'interview', 'schedule', 'unfortunately', 
+      'offer', 'moving forward', 'next steps', 'hiring'
+    ];
+    
+    if (!applicationKeywords.some(kw => bodyText.includes(kw))) {
       return null;
     }
 
     // Attempt to extract Company
     let company = '';
-    const fromMatch = from.match(/@([^.]+)\./);
-    if (fromMatch && fromMatch[1]) {
-      company = fromMatch[1].charAt(0).toUpperCase() + fromMatch[1].slice(1);
-    }
     
     // Better company extraction from Subject (e.g. "Your application to Acme Corp")
-    const companySubjectMatch = subject.match(/(?:at|to|with) ([A-Z][a-zA-Z0-9\s]+?)(?:for|role|-|$)/);
-    if (companySubjectMatch && companySubjectMatch[1]) {
-      company = companySubjectMatch[1].trim();
+    const companySubjectMatch = subject.match(/(?:at|to|with) ([A-Z][a-zA-Z0-9\s\.]+?)(?:\sfor|\srole|\s-|$)|\s([A-Z][a-zA-Z0-9\.]+)$/);
+    if (companySubjectMatch) {
+      company = (companySubjectMatch[1] || companySubjectMatch[2]).trim();
+    }
+    
+    if (!company) {
+      const fromMatch = from.match(/@([^.]+)\./);
+      if (fromMatch && fromMatch[1]) {
+        const domain = fromMatch[1].toLowerCase();
+        // Skip common job board/platform domains
+        const platforms = ['greenhouse', 'lever', 'workday', 'smartrecruiters', 'ashbyhq', 'breezy', 'jobvite'];
+        if (!platforms.includes(domain)) {
+          company = fromMatch[1].charAt(0).toUpperCase() + fromMatch[1].slice(1);
+        }
+      }
     }
     
     if (!company) {
@@ -159,16 +217,16 @@ export class GmailService {
       role = subject.split(/[-|:()]/)[0].trim() || 'Software Engineer';
     }
 
-    // Determine status
+    // Determine status - Order matters (check rejection first)
     let status = 'applied';
     
-    if (bodyText.includes('offer')) {
+    if (bodyText.includes('unfortunately') || bodyText.includes('not moving forward') || bodyText.includes('decided to proceed with other')) {
+      status = 'rejected';
+    } else if (bodyText.includes('offer')) {
       status = 'offer';
     } else if (bodyText.includes('interview') || bodyText.includes('we\'d like to schedule') || bodyText.includes('schedule a time')) {
       status = 'interview_scheduled';
-    } else if (bodyText.includes('unfortunately') || bodyText.includes('not moving forward') || bodyText.includes('other candidates')) {
-      status = 'rejected';
-    } else if (bodyText.includes('next steps') || bodyText.includes('moving forward')) {
+    } else if (bodyText.includes('moving forward') || bodyText.includes('next steps')) {
       status = 'in_review';
     } else if (bodyText.includes('application received') || bodyText.includes('thank you for applying')) {
       status = 'applied';

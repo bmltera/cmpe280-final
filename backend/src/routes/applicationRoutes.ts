@@ -56,4 +56,15 @@ router.get('/:id/timeline', authMiddleware, async (req: Request, res: Response) 
   }
 });
 
+// DELETE /api/jobs/:id - Delete an application
+router.delete('/:id', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    await jobAppService.deleteApplication(req.userId!, req.params.id);
+    res.json({ success: true, message: 'Application deleted successfully' });
+  } catch (err: any) {
+    console.error('Error deleting application:', err);
+    res.status(500).json({ success: false, error: 'Failed to delete application' });
+  }
+});
+
 export default router;
