@@ -173,13 +173,6 @@ export default function DashboardPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight">Jobs</h1>
         <p className="mt-1 text-muted-foreground">Discover and apply to the latest positions</p>
-        <p className="mt-2 text-xs text-muted-foreground/80">
-          Company logos provided by{' '}
-          <Link href="https://logo.dev" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">
-            Logo.dev
-          </Link>
-          .
-        </p>
       </div>
 
       {/* Job Grid */}
