@@ -93,13 +93,17 @@ function parseTableRow(line: string, sourceName: string, sourceUrl: string, jobT
   // Clean title (remove emoji flags and 🛂 🔒 markers)
   const title = titleRaw.replace(/🛂|🔒|🇺🇸|🇨🇦/g, '').trim();
 
-  // Clean location (remove <br> tags, <details> tags)
+  // Clean location: line breaks from <br>, </br>, etc. → newline; store one line per site
   const location = locationRaw
-    .replace(/<br\s*\/?>/gi, ', ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/\s*br\s*>/gi, '\n')
     .replace(/<\/?details>/gi, '')
     .replace(/<\/?summary>/gi, '')
     .replace(/\*\*/g, '')
-    .trim();
+    .split(/\n+/)
+    .map((s) => s.replace(/^\s*,\s*/, '').trim())
+    .filter((s) => s.length > 0)
+    .join('\n');
 
   // Extract application URL from the HTML anchor tag
   const urlMatch = linkRaw.match(/href="([^"]+)"/);
