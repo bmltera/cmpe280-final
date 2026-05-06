@@ -7,10 +7,10 @@ and allows users to apply, dismiss, and track applications on a Kanban-style das
 
 ## Main User Flows
 1. **Sign Up/Sign In**: Supabase Auth (email/password)
-2. **Job Discovery**: Grid of 8 cards from 20 fetched, dismiss/replace animation, apply flow
-3. **Apply Flow**: Click Apply → opens link in new tab → confirm dialog → add to Kanban
-4. **Kanban Board**: Drag & drop between Applied/OA/Interview/Offer/Rejected columns
-5. **Notes**: Per-job notes editable from Kanban detail modal
+2. **Job Discovery**: The API returns up to **20** jobs (excluding dismissed and already-tracked). The UI shows **8 cards** at a time in a grid. **Dismiss** fades the card out and removes it from the pool; **Apply → Yes (applied)** does the same after tracking. Whenever a card leaves the grid, the client **refetches** discover jobs and **fills empty slots** (up to 8) when more jobs are available—users should not see holes where another job could appear. The page **does not** show the old “available / in pool” stats row. Cards show **company logos** (Logo.dev, optional env), **multiple locations** as stacked lines when present, and **Apply** is pinned to the **bottom** of each card so buttons align across cards. On **large viewports**, the discovery layout is **tightened to fit the viewport** so the job grid stays visible with minimal vertical page scrolling.
+3. **Apply Flow**: **Apply** opens the application URL in a **new tab**, records **apply-clicked**, then opens a **“Did you apply?”** modal with **No, not yet** and **Yes, I applied**. **Yes** calls **apply-confirmed**, creates a tracked job with status **Applied**, and removes the card from discovery (same refill behavior). **No** closes the modal and leaves the card dismissable/clickable. Switching browser tabs or session refresh **does not** wipe or reload the discovery grid unexpectedly—the auth layer keeps the Supabase client stable and list-fetch effects key off **user id**, not the whole `user` object.
+4. **Kanban Board**: Five columns (**Applied**, **OA**, **Interview**, **Offer**, **Rejected**). **Drag and drop** updates status. The board uses a **five-column CSS grid** so all columns are visible at typical desktop widths **without horizontal scrolling** (compact cards and typography). Cards show **company logos** and **stacked locations** when there are multiple.
+5. **Notes**: Per-job notes editable from the Kanban detail modal
 6. **Admin**: Password-gated page for job management and manual scrape triggers
 
 ## Design Language
@@ -21,11 +21,12 @@ and allows users to apply, dismiss, and track applications on a Kanban-style das
 - Smooth animations (fade-out on dismiss, drag-and-drop)
 - Toast notifications via sonner
 - Skeleton loading states
+- **Company logos**: Logo.dev name lookup when `NEXT_PUBLIC_LOGO_DEV_TOKEN` is set; letter fallback when missing or offline
 
 ## Frontend Architecture
-- **Framework**: Next.js 15 (App Router) + TypeScript
+- **Framework**: Next.js 16 (App Router) + TypeScript + React 19
 - **UI**: shadcn/ui + Tailwind CSS
-- **Auth**: Supabase Auth client via React context
+- **Auth**: Supabase Auth client via React context (singleton browser client via `useMemo` so callbacks stay stable)
 - **State**: React hooks (useState/useEffect/useCallback)
 - **Drag & Drop**: @hello-pangea/dnd
 - **API Client**: Custom fetch wrapper in /lib/api/
@@ -44,12 +45,13 @@ frontend/
     components/
       ui/             # shadcn components
       layout/         # Navbar
-      jobs/           # JobCard
+      jobs/           # JobCard, CompanyLogo
     hooks/
       useAuth.tsx     # Auth context provider
     lib/
       supabase/       # Supabase client
       api/            # API client functions
+      utils.ts        # cn(), splitLocationLines() for multi-location display
     types/            # TypeScript interfaces
 ```
 
@@ -111,6 +113,7 @@ All responses: `{ success: boolean, data?: T, error?: string }`
 ## Scraping Behavior
 - **Sources**: Two GitHub README markdown tables (New Grad 2027, Summer 2027 Internships)
 - **Parsing**: Regex-based markdown table parser extracting Company/Role/Location/Link/Date
+- **Location field**: HTML line breaks (`<br>`, `</br>`, etc.) are normalized to **newlines**; multiple locations are stored as **newline-separated** text for clean display (stacked lines in UI)
 - **Enrichment**: Attempts to scrape application URL for description/salary (best-effort, 8s timeout)
 - **Dedup**: MD5 hash of normalized company+title+url
 - **First run**: Scrapes 30 most recent jobs
@@ -130,11 +133,12 @@ PORT=3001
 FRONTEND_URL=http://localhost:3000
 ```
 
-### Frontend (.env.local)
+### Frontend (.env — see frontend/.env.example)
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 NEXT_PUBLIC_API_URL=http://localhost:3001
+NEXT_PUBLIC_LOGO_DEV_TOKEN=   # optional; publishable key from https://www.logo.dev/dashboard
 ```
 
 ## Deployment Instructions

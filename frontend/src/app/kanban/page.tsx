@@ -13,6 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { CompanyLogo } from '@/components/jobs/CompanyLogo';
+import { splitLocationLines } from '@/lib/utils';
 
 const COLUMNS: { id: KanbanStatus; label: string; color: string }[] = [
   { id: 'Applied', label: 'Applied', color: 'bg-blue-500/10 border-blue-500/20 text-blue-400' },
@@ -24,6 +26,7 @@ const COLUMNS: { id: KanbanStatus; label: string; color: string }[] = [
 
 export default function KanbanPage() {
   const { user, loading: authLoading, getToken } = useAuth();
+  const userId = user?.id;
   const router = useRouter();
   const [trackedJobs, setTrackedJobs] = useState<TrackedJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,9 +49,11 @@ export default function KanbanPage() {
     setLoading(false);
   }, [getToken]);
 
+  // Key on user id — session refresh on tab focus must not refetch and flash the board.
   useEffect(() => {
-    if (user) fetchJobs();
-  }, [user, fetchJobs]);
+    if (!userId) return;
+    fetchJobs();
+  }, [userId, fetchJobs]);
 
   const getColumnJobs = (status: KanbanStatus) =>
     trackedJobs.filter((j) => j.status === status);
@@ -105,26 +110,30 @@ export default function KanbanPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] px-4 py-8 sm:px-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">Kanban Board</h1>
-        <p className="mt-1 text-muted-foreground">Track your application progress</p>
+    <div className="mx-auto w-full max-w-full px-2 py-6 sm:px-4 lg:px-6">
+      <div className="mb-5 sm:mb-6">
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Kanban Board</h1>
+        <p className="mt-1 text-sm text-muted-foreground sm:text-base">Track your application progress</p>
       </div>
 
       {loading ? (
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div className="grid w-full min-w-0 grid-cols-5 gap-1.5 sm:gap-2">
           {COLUMNS.map((c) => (
-            <Skeleton key={c.id} className="h-96 w-72 shrink-0 rounded-xl" />
+            <Skeleton key={c.id} className="h-80 min-h-0 min-w-0 rounded-lg sm:h-96" />
           ))}
         </div>
       ) : (
         <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="flex gap-4 overflow-x-auto pb-4">
+          <div className="grid w-full min-w-0 grid-cols-5 gap-1.5 sm:gap-2">
             {COLUMNS.map((col) => (
-              <div key={col.id} className="w-72 shrink-0">
-                <div className={`mb-3 flex items-center gap-2 rounded-lg border p-2.5 ${col.color}`}>
-                  <span className="text-sm font-semibold">{col.label}</span>
-                  <Badge variant="secondary" className="ml-auto text-xs">
+              <div key={col.id} className="flex min-w-0 flex-col">
+                <div
+                  className={`mb-2 flex min-h-[2.25rem] items-center gap-1 rounded-md border px-1.5 py-1 sm:mb-2.5 sm:gap-1.5 sm:px-2 sm:py-1.5 ${col.color}`}
+                >
+                  <span className="min-w-0 truncate text-[11px] font-semibold leading-tight sm:text-xs">
+                    {col.label}
+                  </span>
+                  <Badge variant="secondary" className="ml-auto shrink-0 px-1.5 py-0 text-[10px] sm:text-xs">
                     {getColumnJobs(col.id).length}
                   </Badge>
                 </div>
@@ -134,7 +143,7 @@ export default function KanbanPage() {
                     <div
                       ref={provided.innerRef}
                       {...provided.droppableProps}
-                      className={`min-h-[400px] space-y-2 rounded-xl border border-dashed p-2 transition-colors ${
+                      className={`max-h-[calc(100vh-11rem)] min-h-[220px] space-y-1.5 overflow-y-auto rounded-lg border border-dashed p-1 sm:min-h-[260px] sm:space-y-2 sm:p-1.5 ${
                         snapshot.isDraggingOver
                           ? 'border-primary/50 bg-primary/5'
                           : 'border-border/30 bg-card/20'
@@ -156,18 +165,31 @@ export default function KanbanPage() {
                                   setEditNotes(tracked.notes || '');
                                 }}
                               >
-                                <CardContent className="p-3.5">
-                                  <p className="text-sm font-semibold line-clamp-1">{tracked.job?.title || 'Unknown'}</p>
-                                  <p className="mt-0.5 text-xs text-muted-foreground">{tracked.job?.company || 'Unknown'}</p>
-                                  <p className="mt-1 text-[10px] text-muted-foreground truncate">
-                                    {tracked.job?.location || ''}
-                                  </p>
+                                <CardContent className="p-2 sm:p-2.5">
+                                  <div className="flex items-start gap-1.5 sm:gap-2">
+                                    <CompanyLogo company={tracked.job?.company || 'Unknown'} size={24} />
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-[11px] font-semibold leading-snug line-clamp-2 sm:text-xs sm:line-clamp-1">
+                                        {tracked.job?.title || 'Unknown'}
+                                      </p>
+                                      <p className="mt-0.5 truncate text-[10px] text-muted-foreground sm:text-xs">
+                                        {tracked.job?.company || 'Unknown'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="mt-1 space-y-0.5 text-[9px] text-muted-foreground sm:text-[10px]">
+                                    {splitLocationLines(tracked.job?.location).map((line, i) => (
+                                      <p key={`${i}-${line}`} className="truncate leading-tight">
+                                        {line}
+                                      </p>
+                                    ))}
+                                  </div>
                                   {tracked.notes && (
-                                    <p className="mt-2 text-[10px] text-muted-foreground line-clamp-2 italic">
+                                    <p className="mt-1.5 line-clamp-2 text-[9px] italic text-muted-foreground sm:mt-2 sm:text-[10px]">
                                       {tracked.notes}
                                     </p>
                                   )}
-                                  <p className="mt-2 text-[10px] text-muted-foreground/60">
+                                  <p className="mt-1.5 truncate text-[9px] text-muted-foreground/60 sm:mt-2 sm:text-[10px]">
                                     Updated {new Date(tracked.last_status_change_at).toLocaleDateString()}
                                   </p>
                                 </CardContent>
@@ -194,9 +216,16 @@ export default function KanbanPage() {
           </DialogHeader>
           {selectedJob && (
             <div className="space-y-4">
-              <div>
-                <p className="text-sm text-muted-foreground">{selectedJob.job?.company}</p>
-                <p className="text-xs text-muted-foreground">{selectedJob.job?.location}</p>
+              <div className="flex items-start gap-3">
+                <CompanyLogo company={selectedJob.job?.company || 'Unknown'} size={48} />
+                <div className="min-w-0 space-y-1">
+                  <p className="text-sm text-muted-foreground">{selectedJob.job?.company}</p>
+                  <div className="space-y-0.5 text-xs text-muted-foreground">
+                    {splitLocationLines(selectedJob.job?.location).map((line, i) => (
+                      <p key={`${i}-${line}`}>{line}</p>
+                    ))}
+                  </div>
+                </div>
               </div>
               <div className="flex gap-2">
                 <Badge>{selectedJob.status}</Badge>

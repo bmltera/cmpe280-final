@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 
@@ -20,7 +20,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  /** One browser client for the app lifetime — avoids unstable callbacks (e.g. getToken) retriggering effects every render. */
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     if (!supabase) {
