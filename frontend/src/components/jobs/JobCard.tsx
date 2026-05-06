@@ -46,7 +46,7 @@ export function JobCard({ job, onDismiss, onApply, onApplyConfirm, onApplyCancel
             e.stopPropagation();
             onDismiss(job.id);
           }}
-          className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-muted/80 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/20 hover:text-destructive group-hover:opacity-100"
+          className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-muted/80 text-muted-foreground transition-opacity hover:bg-destructive/20 hover:text-destructive sm:opacity-0 sm:group-hover:opacity-100"
           title="Dismiss"
         >
           ✕

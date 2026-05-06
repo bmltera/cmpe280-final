@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { supabaseAdmin } from '../config/supabase';
 
 // Rejection is terminal and always wins; other statuses only progress forward.
@@ -186,6 +187,76 @@ export class JobApplicationService {
 
     if (error) throw error;
     return data;
+  }
+
+  async addToKanban(userId: string, applicationId: string): Promise<string> {
+    const { data: app, error: appError } = await supabaseAdmin
+      .from('job_applications')
+      .select('*')
+      .eq('id', applicationId)
+      .eq('user_id', userId)
+      .single();
+
+    if (appError || !app) throw new Error('Application not found');
+
+    const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${app.gmail_thread_id}`;
+    const hash = crypto
+      .createHash('md5')
+      .update(`${app.company.toLowerCase().trim()}|${app.role.toLowerCase().trim()}|${gmailUrl.trim()}`)
+      .digest('hex');
+
+    // Find or create a synthetic jobs row for this Gmail application
+    let jobId: string;
+    const { data: existingJob } = await supabaseAdmin
+      .from('jobs')
+      .select('id')
+      .eq('unique_hash', hash)
+      .maybeSingle();
+
+    if (existingJob) {
+      jobId = existingJob.id;
+    } else {
+      const { data: newJob, error: insertError } = await supabaseAdmin
+        .from('jobs')
+        .insert({
+          company: app.company,
+          title: app.role,
+          application_url: gmailUrl,
+          source_name: 'gmail',
+          unique_hash: hash,
+        })
+        .select('id')
+        .single();
+
+      if (insertError || !newJob) throw new Error('Failed to create job entry');
+      jobId = newJob.id;
+    }
+
+    const STATUS_MAP: Record<string, string> = {
+      applied: 'Applied',
+      in_review: 'Applied',
+      interview_scheduled: 'Interview',
+      offer: 'Offer',
+      rejected: 'Rejected',
+    };
+
+    const { data: tracked, error: trackError } = await supabaseAdmin
+      .from('user_tracked_jobs')
+      .upsert(
+        {
+          user_id: userId,
+          job_id: jobId,
+          status: STATUS_MAP[app.status] ?? 'Applied',
+          applied_at: app.date_applied,
+          last_status_change_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,job_id' }
+      )
+      .select('id')
+      .single();
+
+    if (trackError || !tracked) throw new Error('Failed to track job');
+    return tracked.id;
   }
 
   async deleteApplication(userId: string, id: string) {

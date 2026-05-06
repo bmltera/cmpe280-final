@@ -30,6 +30,17 @@ router.post('/sync', authMiddleware, async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/jobs/:id/add-to-kanban
+router.post('/:id/add-to-kanban', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const trackedId = await jobAppService.addToKanban(req.userId!, req.params.id as string);
+    res.json({ success: true, data: { trackedId } });
+  } catch (err: any) {
+    console.error('Error adding to kanban:', err);
+    res.status(500).json({ success: false, error: err.message || 'Failed to add to kanban' });
+  }
+});
+
 // PATCH /api/jobs/:id - Manually update a job's status
 router.patch('/:id', authMiddleware, async (req: Request, res: Response) => {
   try {
