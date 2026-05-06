@@ -117,38 +117,41 @@ export default function KanbanPage() {
       </div>
 
       {loading ? (
-        <div className="grid w-full min-w-0 grid-cols-5 gap-1.5 sm:gap-2">
-          {COLUMNS.map((c) => (
-            <Skeleton key={c.id} className="h-80 min-h-0 min-w-0 rounded-lg sm:h-96" />
-          ))}
+        <div className="overflow-x-auto">
+          <div className="grid min-w-150 grid-cols-5 gap-1.5 sm:gap-2">
+            {COLUMNS.map((c) => (
+              <Skeleton key={c.id} className="h-80 min-h-0 min-w-0 rounded-lg sm:h-96" />
+            ))}
+          </div>
         </div>
       ) : (
         <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="grid w-full min-w-0 grid-cols-5 gap-1.5 sm:gap-2">
-            {COLUMNS.map((col) => (
-              <div key={col.id} className="flex min-w-0 flex-col">
-                <div
-                  className={`mb-2 flex min-h-[2.25rem] items-center gap-1 rounded-md border px-1.5 py-1 sm:mb-2.5 sm:gap-1.5 sm:px-2 sm:py-1.5 ${col.color}`}
-                >
-                  <span className="min-w-0 truncate text-[11px] font-semibold leading-tight sm:text-xs">
-                    {col.label}
-                  </span>
-                  <Badge variant="secondary" className="ml-auto shrink-0 px-1.5 py-0 text-[10px] sm:text-xs">
-                    {getColumnJobs(col.id).length}
-                  </Badge>
-                </div>
+          <div className="overflow-x-auto">
+            <div className="grid min-w-150 grid-cols-5 gap-1.5 sm:gap-2">
+              {COLUMNS.map((col) => (
+                <div key={col.id} className="flex min-w-0 flex-col">
+                  <div
+                    className={`mb-2 flex min-h-9 items-center gap-1 rounded-md border px-1.5 py-1 sm:mb-2.5 sm:gap-1.5 sm:px-2 sm:py-1.5 ${col.color}`}
+                  >
+                    <span className="min-w-0 truncate text-[11px] font-semibold leading-tight sm:text-xs">
+                      {col.label}
+                    </span>
+                    <Badge variant="secondary" className="ml-auto shrink-0 px-1.5 py-0 text-[10px] sm:text-xs">
+                      {getColumnJobs(col.id).length}
+                    </Badge>
+                  </div>
 
-                <Droppable droppableId={col.id}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                      className={`max-h-[calc(100vh-11rem)] min-h-[220px] space-y-1.5 overflow-y-auto rounded-lg border border-dashed p-1 sm:min-h-[260px] sm:space-y-2 sm:p-1.5 ${
-                        snapshot.isDraggingOver
-                          ? 'border-primary/50 bg-primary/5'
-                          : 'border-border/30 bg-card/20'
-                      }`}
-                    >
+                  <Droppable droppableId={col.id}>
+                    {(provided, snapshot) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        className={`max-h-[calc(100vh-11rem)] min-h-55 space-y-1.5 overflow-y-auto rounded-lg border border-dashed p-1 sm:min-h-65 sm:space-y-2 sm:p-1.5 ${
+                          snapshot.isDraggingOver
+                            ? 'border-primary/50 bg-primary/5'
+                            : 'border-border/30 bg-card/20'
+                        }`}
+                      >
                       {getColumnJobs(col.id).map((tracked, index) => (
                         <Draggable key={tracked.id} draggableId={tracked.id} index={index}>
                           {(provided, snapshot) => (
@@ -198,12 +201,13 @@ export default function KanbanPage() {
                           )}
                         </Draggable>
                       ))}
-                      {provided.placeholder}
-                    </div>
-                  )}
-                </Droppable>
-              </div>
-            ))}
+                        {provided.placeholder}
+                      </div>
+                    )}
+                  </Droppable>
+                </div>
+              ))}
+            </div>
           </div>
         </DragDropContext>
       )}

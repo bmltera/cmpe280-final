@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Outfit } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/hooks/useAuth";
 import { Navbar } from "@/components/layout/Navbar";
 import { Toaster } from "@/components/ui/sonner";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const inter = Outfit({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
   title: "JobTracker - Find & Track Your Dream Job",
@@ -18,8 +18,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${inter.variable} font-sans antialiased`}>
+    <html lang="en" className={`dark ${inter.variable}`}>
+      <body className="font-sans antialiased">
         <AuthProvider>
           <Navbar />
           <main className="pt-16 min-h-screen">{children}</main>

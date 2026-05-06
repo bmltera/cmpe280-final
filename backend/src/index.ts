@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import jobRoutes from './routes/jobRoutes';
 import trackedJobRoutes from './routes/trackedJobRoutes';
 import adminRoutes from './routes/adminRoutes';
+import applicationRoutes from './routes/applicationRoutes';
+import gmailRoutes from './routes/gmailRoutes';
 import { initCronJobs } from './cron/scheduler';
 
 dotenv.config();
@@ -25,9 +27,11 @@ app.get('/api/health', (_req, res) => {
 });
 
 // Routes
-app.use('/api/jobs', jobRoutes);
+app.use('/api/jobs', applicationRoutes); // Handle application tracking specific /api/jobs endpoints
+app.use('/api/jobs', jobRoutes); // Fallback for other job endpoints
 app.use('/api/tracked-jobs', trackedJobRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/gmail', gmailRoutes);
 
 // Start server
 app.listen(PORT, () => {

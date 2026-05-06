@@ -35,6 +35,7 @@ export class JobRepository {
     let query = supabaseAdmin
       .from('jobs')
       .select('*')
+      .or('source_name.is.null,source_name.neq.gmail')
       .order('created_at', { ascending: false })
       .limit(limit);
 
