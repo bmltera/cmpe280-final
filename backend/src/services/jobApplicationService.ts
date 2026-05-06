@@ -1,5 +1,20 @@
 import { supabaseAdmin } from '../config/supabase';
 
+// Rejection is terminal and always wins; other statuses only progress forward.
+const STATUS_PRIORITY: Record<string, number> = {
+  applied: 0,
+  in_review: 1,
+  interview_scheduled: 2,
+  offer: 3,
+  rejected: 99,
+};
+
+function shouldUpdateStatus(current: string, incoming: string): boolean {
+  if (incoming === 'rejected') return true;
+  if (current === 'rejected') return false;
+  return (STATUS_PRIORITY[incoming] ?? 0) > (STATUS_PRIORITY[current] ?? 0);
+}
+
 export class JobApplicationService {
   async processParsedEmail(userId: string, parsed: any) {
     // 1. Check if application already exists for this user, company, role, thread
@@ -18,9 +33,7 @@ export class JobApplicationService {
 
     if (existingApp) {
       applicationId = existingApp.id;
-      // Only update status if it has 'progressed' or changed
-      // Simple logic: if status is different, update it
-      if (existingApp.status !== parsed.status) {
+      if (shouldUpdateStatus(existingApp.status, parsed.status)) {
         statusChanged = true;
         await supabaseAdmin
           .from('job_applications')
@@ -42,19 +55,19 @@ export class JobApplicationService {
         .ilike('role', parsed.role)
         .order('last_updated', { ascending: false })
         .limit(1);
-        
+
       const similarApp = similarApps && similarApps.length > 0 ? similarApps[0] : null;
-        
+
       if (similarApp) {
         applicationId = similarApp.id;
-        if (similarApp.status !== parsed.status) {
-           statusChanged = true;
-           await supabaseAdmin
+        if (shouldUpdateStatus(similarApp.status, parsed.status)) {
+          statusChanged = true;
+          await supabaseAdmin
             .from('job_applications')
             .update({
               status: parsed.status,
               last_updated: parsed.date_applied,
-              gmail_thread_id: parsed.gmail_thread_id, // Update thread ID
+              gmail_thread_id: parsed.gmail_thread_id,
             })
             .eq('id', applicationId);
         }

@@ -75,7 +75,16 @@ export class GmailService {
 
     const gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
 
-    // Build search query based on keywords
+    // Fetch user's tracked senders
+    const { data: trackedSenders } = await supabaseAdmin
+      .from('user_tracked_senders')
+      .select('email')
+      .eq('user_id', userId);
+    const senderEmails = (trackedSenders || []).map((s: any) => s.email as string);
+
+    // Only search Primary and Updates inbox tabs
+    const categoryFilter = '(category:primary OR category:updates)';
+
     const keywords = [
       '"application received"',
       '"thank you for applying"',
@@ -84,75 +93,119 @@ export class GmailService {
       '"unfortunately"',
       '"offer"',
       '"next steps"',
-      '"confirmation of application"'
+      '"confirmation of application"',
     ];
-    // Exclude common newsletter/marketing terms from the search itself
     const excludeTerms = [
-      'newsletter',
-      'marketing',
-      'digest',
-      'summary',
-      'unsubscribe',
-      'weekly',
-      'daily',
-      '"new jobs for you"',
-      '"jobs you might like"',
-      '"job alert"',
-      '"recommended jobs"',
-      '"view more jobs"',
-      '"latest job openings"'
+      'newsletter', 'marketing', 'digest', 'summary', 'unsubscribe',
+      'weekly', 'daily',
+      '"new jobs for you"', '"jobs you might like"', '"job alert"',
+      '"recommended jobs"', '"view more jobs"', '"latest job openings"',
     ];
-    
-    const query = `(${keywords.join(' OR ')}) -{${excludeTerms.join(' ')}}`;
 
-    const res = await gmail.users.messages.list({
+    const standardQuery = `${categoryFilter} (${keywords.join(' OR ')}) -{${excludeTerms.join(' ')}}`;
+
+    const standardRes = await gmail.users.messages.list({
       userId: 'me',
-      q: query,
-      maxResults: 50, // Fetch recent emails
+      q: standardQuery,
+      maxResults: 50,
     });
 
-    const messages = res.data.messages || [];
+    // Collect standard message IDs
+    const standardIds = new Set<string>(
+      (standardRes.data.messages || []).map((m: any) => m.id as string).filter(Boolean)
+    );
+
+    // Collect tracked-sender message IDs (no keyword filter — user opted in explicitly)
+    const trackedIds = new Set<string>();
+    if (senderEmails.length > 0) {
+      const fromClause = senderEmails.map(e => `from:${e}`).join(' OR ');
+      const trackedRes = await gmail.users.messages.list({
+        userId: 'me',
+        q: `${categoryFilter} (${fromClause})`,
+        maxResults: 50,
+      });
+      for (const m of trackedRes.data.messages || []) {
+        if (m.id && !standardIds.has(m.id)) {
+          trackedIds.add(m.id);
+        }
+      }
+    }
+
     const jobAppService = new JobApplicationService();
-    
     let syncedCount = 0;
 
-    for (const msg of messages) {
-      if (!msg.id) continue;
-      
+    const toProcess = [
+      ...[...standardIds].map(id => ({ id, skipFilters: false })),
+      ...[...trackedIds].map(id => ({ id, skipFilters: true })),
+    ];
+
+    for (const { id, skipFilters } of toProcess) {
       try {
         const email = await gmail.users.messages.get({
           userId: 'me',
-          id: msg.id,
+          id,
           format: 'full',
         });
-        
-        const parsed = this.parseEmail(email.data);
+
+        const parsed = this.parseEmail(email.data, skipFilters);
         if (parsed) {
           await jobAppService.processParsedEmail(userId, parsed);
           syncedCount++;
         }
       } catch (e) {
-        console.error(`Failed to process message ${msg.id}:`, e);
-        // Continue to next message instead of crashing the whole sync
+        console.error(`Failed to process message ${id}:`, e);
       }
     }
-    
+
     return syncedCount;
   }
 
-  private parseEmail(emailData: any) {
+  private extractBodyText(payload: any): string {
+    if (!payload) return '';
+
+    if (payload.body?.data) {
+      const mimeType = payload.mimeType || '';
+      if (mimeType === 'text/plain' || mimeType === 'text/html') {
+        const raw = payload.body.data.replace(/-/g, '+').replace(/_/g, '/');
+        const text = Buffer.from(raw, 'base64').toString('utf-8');
+        if (mimeType === 'text/html') {
+          return text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        }
+        return text;
+      }
+    }
+
+    if (payload.parts) {
+      const plainPart = payload.parts.find((p: any) => p.mimeType === 'text/plain');
+      if (plainPart) return this.extractBodyText(plainPart);
+
+      const htmlPart = payload.parts.find((p: any) => p.mimeType === 'text/html');
+      if (htmlPart) return this.extractBodyText(htmlPart);
+
+      for (const part of payload.parts) {
+        const text = this.extractBodyText(part);
+        if (text) return text;
+      }
+    }
+
+    return '';
+  }
+
+  private parseEmail(emailData: any, skipFilters = false) {
     const headers = emailData.payload?.headers || [];
     const subject = headers.find((h: any) => h.name.toLowerCase() === 'subject')?.value || '';
     const from = headers.find((h: any) => h.name.toLowerCase() === 'from')?.value || '';
     const dateStr = headers.find((h: any) => h.name.toLowerCase() === 'date')?.value;
     const date = dateStr ? new Date(dateStr) : new Date();
-    
-    let snippet = emailData.snippet || '';
+
+    const snippet = emailData.snippet || '';
+    const fullBody = this.extractBodyText(emailData.payload).slice(0, 8000);
 
     // Advanced parsing strategy: regex and keyword matching
     const subjectLower = subject.toLowerCase();
-    const snippetLower = snippet.toLowerCase();
-    const bodyText = (subjectLower + " " + snippetLower);
+    // Use full body for matching when available, fall back to snippet
+    const bodyContent = fullBody || snippet;
+    const bodyText = (subjectLower + " " + bodyContent.toLowerCase());
 
     // 1. Filter out obviously non-job emails (Marketing, Newsletters, Digests)
     const negativeKeywords = [
@@ -163,23 +216,25 @@ export class GmailService {
       'survey', 'webinar', 'event', 'promotion'
     ];
 
-    if (negativeKeywords.some(kw => bodyText.includes(kw))) {
-      return null;
-    }
+    if (!skipFilters) {
+      if (negativeKeywords.some(kw => bodyText.includes(kw))) {
+        return null;
+      }
 
-    // 2. Check for List-Unsubscribe header (strong indicator of a newsletter)
-    if (headers.some((h: any) => h.name.toLowerCase() === 'list-unsubscribe')) {
-      return null;
-    }
+      // 2. Check for List-Unsubscribe header (strong indicator of a newsletter)
+      if (headers.some((h: any) => h.name.toLowerCase() === 'list-unsubscribe')) {
+        return null;
+      }
 
-    // 3. Ensure the email is actually about a specific job application
-    const applicationKeywords = [
-      'applied', 'application', 'interview', 'schedule', 'unfortunately', 
-      'offer', 'moving forward', 'next steps', 'hiring'
-    ];
-    
-    if (!applicationKeywords.some(kw => bodyText.includes(kw))) {
-      return null;
+      // 3. Ensure the email is actually about a specific job application
+      const applicationKeywords = [
+        'applied', 'application', 'interview', 'schedule', 'unfortunately',
+        'offer', 'moving forward', 'next steps', 'hiring',
+      ];
+
+      if (!applicationKeywords.some(kw => bodyText.includes(kw))) {
+        return null;
+      }
     }
 
     // Attempt to extract Company
@@ -219,12 +274,31 @@ export class GmailService {
 
     // Determine status - Order matters (check rejection first)
     let status = 'applied';
-    
-    if (bodyText.includes('unfortunately') || bodyText.includes('not moving forward') || bodyText.includes('decided to proceed with other')) {
+
+    const isRejection = [
+      'unfortunately', 'not moving forward', 'decided to proceed with other',
+      'decided not to move forward', 'position has been filled', 'no longer considering',
+      'not selected', "we won't be moving", 'we have decided to move forward with other',
+      'not a fit', 'not moving ahead',
+    ].some(p => bodyText.includes(p));
+
+    const isOffer = [
+      'pleased to offer', 'extend an offer', 'compensation package',
+      'start date', 'offer letter', 'we are offering',
+    ].some(p => bodyText.includes(p)) || (bodyText.includes('offer') && !isRejection);
+
+    const isInterview = [
+      'schedule an interview', "we'd like to schedule", 'schedule a time',
+      'availability', 'virtual meeting', 'google meet', 'zoom', 'calendly',
+      'phone screen', 'video call', 'technical interview', 'hiring manager',
+      'interview invite', 'interview request',
+    ].some(p => bodyText.includes(p)) || (bodyText.includes('interview') && !isRejection);
+
+    if (isRejection) {
       status = 'rejected';
-    } else if (bodyText.includes('offer')) {
+    } else if (isOffer) {
       status = 'offer';
-    } else if (bodyText.includes('interview') || bodyText.includes('we\'d like to schedule') || bodyText.includes('schedule a time')) {
+    } else if (isInterview) {
       status = 'interview_scheduled';
     } else if (bodyText.includes('moving forward') || bodyText.includes('next steps')) {
       status = 'in_review';
