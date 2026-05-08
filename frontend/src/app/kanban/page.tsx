@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { CompanyLogo } from '@/components/jobs/CompanyLogo';
+import { InterviewRoundsSection } from '@/components/jobs/InterviewRoundsSection';
 import { splitLocationLines } from '@/lib/utils';
 
 const COLUMNS: { id: KanbanStatus; label: string; color: string }[] = [
@@ -233,7 +234,7 @@ export default function KanbanPage() {
 
       {/* Job Detail Modal */}
       <Dialog open={!!selectedJob} onOpenChange={(open) => !open && setSelectedJob(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{selectedJob?.job?.title}</DialogTitle>
           </DialogHeader>

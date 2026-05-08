@@ -29,6 +29,21 @@ export interface TrackedJob {
   job?: Job;
 }
 
+export type InterviewOutcome = 'pending' | 'passed' | 'failed' | 'cancelled';
+
+export interface InterviewRound {
+  id: string;
+  tracked_job_id: string;
+  user_id: string;
+  round_name: string;
+  scheduled_at: string | null;
+  interviewer: string | null;
+  notes: string | null;
+  outcome: InterviewOutcome;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
