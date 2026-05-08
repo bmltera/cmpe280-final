@@ -53,6 +53,7 @@ export interface ApiResponse<T = unknown> {
 export interface ScrapeResult {
   success: boolean;
   newJobs: number;
+  updated: number;
   skipped: number;
   failed: number;
   timestamp: string;

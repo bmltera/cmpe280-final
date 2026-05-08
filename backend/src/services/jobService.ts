@@ -9,9 +9,9 @@ export class JobService {
   /**
    * Get jobs for the discovery page, excluding user's dismissed and tracked jobs.
    */
-  async getDiscoverJobs(userId: string): Promise<Job[]> {
+  async getDiscoverJobs(userId: string, salaryOnly: boolean = false): Promise<Job[]> {
     // Ensure profile exists
-    return jobRepo.getDiscoverJobs(userId, 20);
+    return jobRepo.getDiscoverJobs(userId, 20, salaryOnly);
   }
 
   /**
@@ -74,5 +74,12 @@ export class JobService {
     updates: { status?: KanbanStatus; notes?: string }
   ): Promise<TrackedJob | null> {
     return userRepo.updateTrackedJob(trackedJobId, userId, updates);
+  }
+
+  /**
+   * Delete a tracked job from the kanban board.
+   */
+  async deleteTrackedJob(trackedJobId: string, userId: string): Promise<void> {
+    await userRepo.deleteTrackedJob(trackedJobId, userId);
   }
 }

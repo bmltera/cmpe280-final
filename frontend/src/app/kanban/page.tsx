@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { TrackedJob, KanbanStatus } from '@/types';
-import { getTrackedJobs, updateTrackedJobStatus, updateTrackedJob } from '@/lib/api';
+import { getTrackedJobs, updateTrackedJobStatus, updateTrackedJob, deleteTrackedJob } from '@/lib/api';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +34,8 @@ export default function KanbanPage() {
   const [selectedJob, setSelectedJob] = useState<TrackedJob | null>(null);
   const [editNotes, setEditNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) router.push('/login');
@@ -104,6 +106,23 @@ export default function KanbanPage() {
       }
     }
     setSaving(false);
+  };
+
+  const handleDeleteTrackedJob = async (trackedJobId: string) => {
+    setDeleting(true);
+    const token = await getToken();
+    if (token) {
+      const res = await deleteTrackedJob(trackedJobId, token);
+      if (res.success) {
+        setTrackedJobs((prev) => prev.filter((j) => j.id !== trackedJobId));
+        toast.success('Job removed from board');
+        setSelectedJob(null);
+        setConfirmDeleteId(null);
+      } else {
+        toast.error('Failed to remove job');
+      }
+    }
+    setDeleting(false);
   };
 
   if (authLoading || !user) {
@@ -256,12 +275,42 @@ export default function KanbanPage() {
                   rows={4}
                 />
               </div>
-              <Button className="w-full" onClick={handleSaveNotes} disabled={saving}>
-                {saving ? 'Saving...' : 'Save Notes'}
-              </Button>
-              <InterviewRoundsSection trackedJobId={selectedJob.id} getToken={getToken} />
+              <div className="flex gap-2">
+                <Button className="flex-1" onClick={handleSaveNotes} disabled={saving}>
+                  {saving ? 'Saving...' : 'Save Notes'}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                  onClick={() => setConfirmDeleteId(selectedJob.id)}
+                >
+                  Remove
+                </Button>
+              </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!confirmDeleteId} onOpenChange={(open) => !open && setConfirmDeleteId(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove from board?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This will remove the job from your Kanban board. You can always re-add it from the Discover page.
+          </p>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => confirmDeleteId && handleDeleteTrackedJob(confirmDeleteId)}
+            >
+              {deleting ? 'Removing...' : 'Remove'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

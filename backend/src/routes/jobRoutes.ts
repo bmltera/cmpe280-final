@@ -1,14 +1,18 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth';
 import { JobService } from '../services/jobService';
+import { SettingsRepository } from '../repositories/settingsRepository';
 
 const router = Router();
 const jobService = new JobService();
+const settingsRepo = new SettingsRepository();
 
 // GET /api/jobs/discover - Get jobs for discovery
 router.get('/discover', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const jobs = await jobService.getDiscoverJobs(req.userId!);
+    // Read the persistent salary-only setting from the database
+    const salaryOnly = await settingsRepo.getSalaryOnly();
+    const jobs = await jobService.getDiscoverJobs(req.userId!, salaryOnly);
     res.json({ success: true, data: jobs });
   } catch (err: any) {
     console.error('Error fetching discover jobs:', err);

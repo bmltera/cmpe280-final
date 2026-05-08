@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { adminLogin, getAdminJobs, updateAdminJob, runAdminScrape, runAdminSingleScrape } from '@/lib/api';
+import { adminLogin, getAdminJobs, updateAdminJob, runAdminScrape, runAdminSingleScrape, runAdminCleanup, getAdminSalaryOnly, setAdminSalaryOnly } from '@/lib/api';
 import { Job, ScrapeResult } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,8 @@ export default function AdminPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
+  const [salaryOnly, setSalaryOnly] = useState(false);
+  const [togglingFilter, setTogglingFilter] = useState(false);
 
   // Edit modal
   const [editJob, setEditJob] = useState<Job | null>(null);
@@ -33,6 +35,9 @@ export default function AdminPage() {
   const [scrapeResult, setScrapeResult] = useState<ScrapeResult | null>(null);
   const [singleUrl, setSingleUrl] = useState('');
   const [scrapingSingle, setScrapingSingle] = useState(false);
+
+  // Cleanup
+  const [cleaning, setCleaning] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,16 +53,24 @@ export default function AdminPage() {
   const fetchJobs = useCallback(async () => {
     if (!adminToken) return;
     setLoading(true);
-    const res = await getAdminJobs(adminToken, page, search);
+    const res = await getAdminJobs(adminToken, page, search, salaryOnly);
     if (res.success && res.data) {
       setJobs(res.data.jobs);
       setTotal(res.data.total);
     }
     setLoading(false);
-  }, [adminToken, page, search]);
+  }, [adminToken, page, search, salaryOnly]);
 
   useEffect(() => {
-    if (adminToken) fetchJobs();
+    if (adminToken) {
+      fetchJobs();
+      // Load the persistent salary-only setting
+      getAdminSalaryOnly(adminToken).then(res => {
+        if (res.success && res.data) {
+          setSalaryOnly(res.data.enabled);
+        }
+      });
+    }
   }, [adminToken, fetchJobs]);
 
   const handleSaveJob = async () => {
@@ -79,7 +92,7 @@ export default function AdminPage() {
     const res = await runAdminScrape(adminToken);
     if (res.success && res.data) {
       setScrapeResult(res.data);
-      toast.success(`Scrape complete: ${res.data.newJobs} new jobs`);
+      toast.success(`Scrape complete: ${res.data.newJobs} new, ${res.data.updated || 0} updated`);
       fetchJobs();
     } else {
       toast.error('Scrape failed');
@@ -99,6 +112,19 @@ export default function AdminPage() {
       toast.error('Single scrape failed');
     }
     setScrapingSingle(false);
+  };
+
+  const handleCleanup = async () => {
+    if (!adminToken) return;
+    setCleaning(true);
+    const res = await runAdminCleanup(adminToken);
+    if (res.success && res.data) {
+      toast.success(`Cleanup done: ${res.data.deletedInvalidCompanies} bad companies removed, ${res.data.fixedMultiLocations} locations fixed`);
+      fetchJobs();
+    } else {
+      toast.error('Cleanup failed');
+    }
+    setCleaning(false);
   };
 
   // Login Gate
@@ -134,7 +160,7 @@ export default function AdminPage() {
       <h1 className="text-3xl font-bold mb-8">Admin Dashboard</h1>
 
       {/* Scraper Controls */}
-      <div className="grid gap-4 sm:grid-cols-2 mb-8">
+      <div className="grid gap-4 sm:grid-cols-3 mb-8">
         <Card>
           <CardHeader><CardTitle className="text-base">Full Scrape</CardTitle></CardHeader>
           <CardContent>
@@ -144,6 +170,7 @@ export default function AdminPage() {
             {scrapeResult && (
               <div className="mt-3 text-xs space-y-1">
                 <p className="text-emerald-500">New: {scrapeResult.newJobs}</p>
+                <p className="text-blue-500">Updated: {scrapeResult.updated || 0}</p>
                 <p className="text-muted-foreground">Skipped: {scrapeResult.skipped}</p>
                 <p className="text-destructive">Failed: {scrapeResult.failed}</p>
                 <p className="text-muted-foreground/60">{scrapeResult.timestamp}</p>
@@ -167,16 +194,75 @@ export default function AdminPage() {
             </div>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-base">Data Cleanup</CardTitle></CardHeader>
+          <CardContent>
+            <Button onClick={handleCleanup} disabled={cleaning} variant="outline" className="w-full">
+              {cleaning ? 'Cleaning...' : 'Run Cleanup'}
+            </Button>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Removes jobs with invalid company names and fixes multi-location entries.
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Search & Jobs List */}
-      <div className="mb-4 flex gap-2">
-        <Input
-          placeholder="Search jobs..."
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-        />
-        <Badge variant="outline" className="shrink-0 px-4">{total} total</Badge>
+      {/* Search & Filters */}
+      <div className="mb-4 flex flex-col sm:flex-row gap-3">
+        <div className="flex gap-2 flex-1">
+          <Input
+            placeholder="Search jobs..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          />
+          <Badge variant="outline" className="shrink-0 px-4">{total} total</Badge>
+        </div>
+
+        {/* Salary Toggle — persists to backend */}
+        <button
+          id="salary-toggle"
+          type="button"
+          disabled={togglingFilter}
+          onClick={async () => {
+            if (!adminToken) return;
+            const newValue = !salaryOnly;
+            setSalaryOnly(newValue); // optimistic
+            setPage(1);
+            setTogglingFilter(true);
+            const res = await setAdminSalaryOnly(newValue, adminToken);
+            if (res.success) {
+              toast.success(`Salary filter ${newValue ? 'enabled' : 'disabled'} — applies to all users`);
+            } else {
+              setSalaryOnly(!newValue); // revert
+              toast.error('Failed to save setting');
+            }
+            setTogglingFilter(false);
+          }}
+          className={`
+            inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-all duration-200
+            ${salaryOnly
+              ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shadow-sm shadow-emerald-500/10'
+              : 'border-border/50 bg-card/50 text-muted-foreground hover:border-border hover:bg-card/80'
+            }
+            ${togglingFilter ? 'opacity-60 cursor-wait' : ''}
+          `}
+        >
+          <span
+            className={`
+              relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200
+              ${salaryOnly ? 'bg-emerald-500' : 'bg-muted'}
+            `}
+          >
+            <span
+              className={`
+                inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform duration-200
+                ${salaryOnly ? 'translate-x-[18px]' : 'translate-x-[3px]'}
+              `}
+            />
+          </span>
+          Only with salary
+        </button>
       </div>
 
       {loading ? (
@@ -193,6 +279,9 @@ export default function AdminPage() {
                 <p className="text-sm font-medium truncate">{job.title}</p>
                 <p className="text-xs text-muted-foreground">{job.company} • {job.location}</p>
               </div>
+              {job.salary && (
+                <Badge variant="secondary" className="shrink-0 text-[10px]">{job.salary}</Badge>
+              )}
               <Badge variant="outline" className="shrink-0 text-[10px]">{job.source_name}</Badge>
             </div>
           ))}
