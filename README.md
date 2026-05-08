@@ -23,8 +23,12 @@ A full-stack job tracking and discovery application for new-grad and internship 
 ### 1. Set Up Supabase
 
 1. Create a project at [supabase.com](https://supabase.com)
-2. Go to SQL Editor and run `supabase/migrations/001_initial_schema.sql`
-3. Note your project URL, anon key, and service role key
+2. Go to SQL Editor and run the following:
+- `supabase/migrations/001_initial_schema.sql`
+- `supabase/migrations/002_gmail_integration.sql`
+- `supabase/migrations/003_tracked_senders.sql`
+- `supabase/migrations/004_interview_rounds.sql`
+4. Note your project URL, anon key, and service role key
 
 ### 2. Backend
 
