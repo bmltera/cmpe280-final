@@ -145,4 +145,17 @@ export class UserRepository {
     if (error) throw error;
     return data;
   }
+
+  /**
+   * Delete a tracked job.
+   */
+  async deleteTrackedJob(trackedJobId: string, userId: string): Promise<void> {
+    const { error } = await supabaseAdmin
+      .from('user_tracked_jobs')
+      .delete()
+      .eq('id', trackedJobId)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+  }
 }

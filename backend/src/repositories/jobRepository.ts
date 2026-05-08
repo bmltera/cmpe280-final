@@ -14,7 +14,7 @@ export class JobRepository {
   /**
    * Get jobs for discovery, excluding dismissed and tracked jobs for a user.
    */
-  async getDiscoverJobs(userId: string, limit: number = 20): Promise<Job[]> {
+  async getDiscoverJobs(userId: string, limit: number = 20, salaryOnly: boolean = false): Promise<Job[]> {
     // Get user's dismissed job IDs
     const { data: dismissed } = await supabaseAdmin
       .from('user_dismissed_jobs')
@@ -38,6 +38,10 @@ export class JobRepository {
       .or('source_name.is.null,source_name.neq.gmail')
       .order('created_at', { ascending: false })
       .limit(limit);
+
+    if (salaryOnly) {
+      query = query.not('salary', 'is', null);
+    }
 
     if (excludeIds.length > 0) {
       query = query.not('id', 'in', `(${excludeIds.join(',')})`);
@@ -118,13 +122,17 @@ export class JobRepository {
   /**
    * Get all jobs with pagination and optional search (admin).
    */
-  async getAllJobs(page: number = 1, limit: number = 50, search?: string): Promise<{ jobs: Job[]; total: number }> {
+  async getAllJobs(page: number = 1, limit: number = 50, search?: string, salaryOnly: boolean = false): Promise<{ jobs: Job[]; total: number }> {
     let query = supabaseAdmin
       .from('jobs')
       .select('*', { count: 'exact' });
 
     if (search) {
       query = query.or(`company.ilike.%${search}%,title.ilike.%${search}%,location.ilike.%${search}%`);
+    }
+
+    if (salaryOnly) {
+      query = query.not('salary', 'is', null);
     }
 
     const { data, error, count } = await query
@@ -149,5 +157,96 @@ export class JobRepository {
 
     if (error) throw error;
     return data;
+  }
+
+  /**
+   * Delete jobs with invalid company names (empty, "↳", or whitespace-only).
+   * FK cascades handle related user_dismissed_jobs, user_tracked_jobs, user_apply_events.
+   */
+  async deleteJobsWithInvalidCompany(): Promise<number> {
+    // Fetch IDs of bad jobs first
+    const { data: badJobs } = await supabaseAdmin
+      .from('jobs')
+      .select('id, company')
+      .or('company.is.null,company.eq.,company.eq.↳');
+
+    if (!badJobs || badJobs.length === 0) return 0;
+
+    // Also find whitespace-only companies
+    const idsToDelete = badJobs
+      .filter(j => !j.company || j.company.trim() === '' || j.company.trim() === '↳')
+      .map(j => j.id);
+
+    if (idsToDelete.length === 0) return 0;
+
+    // Delete related records first (in case cascade isn't set up)
+    for (const table of ['user_dismissed_jobs', 'user_tracked_jobs', 'user_apply_events'] as const) {
+      await supabaseAdmin.from(table).delete().in('job_id', idsToDelete);
+    }
+
+    const { error } = await supabaseAdmin
+      .from('jobs')
+      .delete()
+      .in('id', idsToDelete);
+
+    if (error) {
+      console.error('Error deleting invalid company jobs:', error);
+      return 0;
+    }
+
+    console.log(`[Cleanup] Deleted ${idsToDelete.length} jobs with invalid company names`);
+    return idsToDelete.length;
+  }
+
+  /**
+   * Update salary and/or location for a job identified by its unique_hash.
+   */
+  async updateJobByHash(hash: string, updates: { salary?: string | null; location?: string | null }): Promise<boolean> {
+    const { error } = await supabaseAdmin
+      .from('jobs')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('unique_hash', hash);
+
+    if (error) {
+      console.error('Error updating job by hash:', error);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Fix jobs with multiple locations (contain newlines) → set to "Multiple Locations".
+   */
+  async fixMultiLocationJobs(): Promise<number> {
+    // Supabase doesn't support regex filtering easily, so fetch all jobs with location containing newlines
+    const { data: allJobs } = await supabaseAdmin
+      .from('jobs')
+      .select('id, location')
+      .not('location', 'is', null);
+
+    if (!allJobs) return 0;
+
+    const multiLocationJobs = allJobs.filter(j => {
+      if (!j.location) return false;
+      const lines = j.location.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+      return lines.length > 1;
+    });
+
+    if (multiLocationJobs.length === 0) return 0;
+
+    const ids = multiLocationJobs.map(j => j.id);
+
+    const { error } = await supabaseAdmin
+      .from('jobs')
+      .update({ location: 'Multiple Locations', updated_at: new Date().toISOString() })
+      .in('id', ids);
+
+    if (error) {
+      console.error('Error fixing multi-location jobs:', error);
+      return 0;
+    }
+
+    console.log(`[Cleanup] Fixed ${ids.length} multi-location jobs`);
+    return ids.length;
   }
 }
