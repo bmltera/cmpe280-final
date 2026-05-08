@@ -20,6 +20,106 @@ const SOURCES = [
 ];
 
 /**
+ * Normalize a raw salary string into a consistent format.
+ * - Hourly: "$35/hr" or "$30 - $45/hr"
+ * - Yearly: "$120,000" or "$120,000 - $180,000"
+ * - Threshold: amounts under $200 are assumed hourly, $200+ assumed yearly.
+ */
+export function normalizeSalary(raw: string | null): string | null {
+  if (!raw || !raw.trim()) return null;
+
+  const cleaned = raw.trim();
+
+  // Try to detect if it's explicitly hourly or yearly
+  const isExplicitlyHourly = /\b(per\s*hour|hourly|\/\s*hr|\/\s*hour)\b/i.test(cleaned);
+  const isExplicitlyYearly = /\b(per\s*year|annual|yearly|\/\s*year|\/\s*yr|per\s*annum|p\.?a\.?)\b/i.test(cleaned);
+
+  // Extract all dollar amounts from the string
+  const amountMatches = cleaned.match(/\$[\d,]+(?:\.\d{1,2})?/g);
+  if (!amountMatches || amountMatches.length === 0) {
+    // Try to match patterns like "150K" or "150k"
+    const kMatch = cleaned.match(/\$?([\d,]+(?:\.\d+)?)\s*[kK]/g);
+    if (kMatch) {
+      const amounts = kMatch.map(m => {
+        const numStr = m.replace(/[\$kK,]/g, '');
+        return Math.round(parseFloat(numStr) * 1000);
+      });
+      if (amounts.length === 2) {
+        return `$${amounts[0].toLocaleString()} - $${amounts[1].toLocaleString()}`;
+      } else if (amounts.length === 1) {
+        return `$${amounts[0].toLocaleString()}`;
+      }
+    }
+    return cleaned; // fallback to raw
+  }
+
+  // Parse the numeric amounts
+  const amounts = amountMatches.map(m => {
+    const numStr = m.replace(/[\$,]/g, '');
+    return parseFloat(numStr);
+  });
+
+  // Determine hourly vs yearly
+  let isHourly: boolean;
+  if (isExplicitlyHourly) {
+    isHourly = true;
+  } else if (isExplicitlyYearly) {
+    isHourly = false;
+  } else {
+    // Heuristic: if the largest amount is under $200, assume hourly
+    const maxAmount = Math.max(...amounts);
+    isHourly = maxAmount < 200;
+  }
+
+  if (isHourly) {
+    // Format as hourly
+    if (amounts.length >= 2) {
+      return `$${Math.round(amounts[0])} - $${Math.round(amounts[1])}/hr`;
+    }
+    return `$${Math.round(amounts[0])}/hr`;
+  } else {
+    // Format as yearly
+    if (amounts.length >= 2) {
+      return `$${Math.round(amounts[0]).toLocaleString()} - $${Math.round(amounts[1]).toLocaleString()}`;
+    }
+    return `$${Math.round(amounts[0]).toLocaleString()}`;
+  }
+}
+
+/**
+ * Normalize location: if multiple cities/lines, return "Multiple Locations".
+ */
+export function normalizeLocation(raw: string | null | undefined): string {
+  if (!raw || !raw.trim()) return '';
+
+  const lines = raw
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/\s*br\s*>/gi, '\n')
+    .replace(/<\/?details>/gi, '')
+    .replace(/<\/?summary>/gi, '')
+    .replace(/\*\*/g, '')
+    .split(/\n+/)
+    .map(s => s.replace(/^\s*,\s*/, '').trim())
+    .filter(s => s.length > 0);
+
+  if (lines.length <= 1) {
+    return lines[0] || '';
+  }
+
+  return 'Multiple Locations';
+}
+
+/**
+ * Check if a company name is valid (not empty, not just "↳", not whitespace-only).
+ */
+function isValidCompany(company: string | null | undefined): boolean {
+  if (!company) return false;
+  const trimmed = company.trim();
+  if (trimmed === '' || trimmed === '↳') return false;
+  return true;
+}
+
+/**
  * Parse the markdown table from the GitHub README to extract job rows.
  * The table format is:
  * | Company | Role | Location | Application/Link | Date Posted |
@@ -90,20 +190,14 @@ function parseTableRow(line: string, sourceName: string, sourceUrl: string, jobT
   // Clean company name (remove ** bold markers)
   const company = companyRaw.replace(/\*\*/g, '').trim();
 
+  // Filter out invalid company names
+  if (!isValidCompany(company)) return null;
+
   // Clean title (remove emoji flags and 🛂 🔒 markers)
   const title = titleRaw.replace(/🛂|🔒|🇺🇸|🇨🇦/g, '').trim();
 
-  // Clean location: line breaks from <br>, </br>, etc. → newline; store one line per site
-  const location = locationRaw
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/\s*br\s*>/gi, '\n')
-    .replace(/<\/?details>/gi, '')
-    .replace(/<\/?summary>/gi, '')
-    .replace(/\*\*/g, '')
-    .split(/\n+/)
-    .map((s) => s.replace(/^\s*,\s*/, '').trim())
-    .filter((s) => s.length > 0)
-    .join('\n');
+  // Normalize location: collapse multi-city to "Multiple Locations"
+  const location = normalizeLocation(locationRaw);
 
   // Extract application URL from the HTML anchor tag
   const urlMatch = linkRaw.match(/href="([^"]+)"/);
@@ -184,9 +278,10 @@ async function enrichJob(job: ScrapedJobRow): Promise<EnrichedJob> {
 
       // Try to extract salary
       const pageText = $('body').text();
-      const salaryMatch = pageText.match(/\$[\d,]+(?:\s*[-–]\s*\$[\d,]+)?(?:\s*(?:per|\/)\s*(?:year|hr|hour|annum))?/i);
+      const salaryMatch = pageText.match(/\$[\d,]+(?:\.\d{1,2})?(?:\s*[-–]\s*\$[\d,]+(?:\.\d{1,2})?)?(?:\s*(?:per|\/)\s*(?:year|yr|hr|hour|annum))?/i);
       if (salaryMatch) {
-        enriched.salary = salaryMatch[0].trim();
+        // Normalize the salary before storing
+        enriched.salary = normalizeSalary(salaryMatch[0]);
       }
     }
   } catch (err) {
@@ -214,6 +309,7 @@ export class ScraperService {
     const result: ScrapeResult = {
       success: true,
       newJobs: 0,
+      updated: 0,
       skipped: 0,
       failed: 0,
       timestamp: new Date().toISOString(),
@@ -247,6 +343,30 @@ export class ScraperService {
             // Check if already exists
             const exists = await this.jobRepo.jobHashExists(hash);
             if (exists) {
+              // Job exists — try to update salary format and location
+              try {
+                const enriched = await enrichJob(row);
+                const updates: { salary?: string | null; location?: string | null } = {};
+
+                if (enriched.salary) {
+                  updates.salary = enriched.salary;
+                }
+
+                // Also fix location for existing jobs
+                const normalizedLoc = normalizeLocation(row.location);
+                if (normalizedLoc) {
+                  updates.location = normalizedLoc;
+                }
+
+                if (Object.keys(updates).length > 0) {
+                  const updated = await this.jobRepo.updateJobByHash(hash, updates);
+                  if (updated) {
+                    result.updated++;
+                  }
+                }
+              } catch (enrichErr) {
+                // Best-effort update, don't fail
+              }
               result.skipped++;
               continue;
             }
@@ -287,7 +407,7 @@ export class ScraperService {
       }
     }
 
-    console.log(`[Scraper] Complete. New: ${result.newJobs}, Skipped: ${result.skipped}, Failed: ${result.failed}`);
+    console.log(`[Scraper] Complete. New: ${result.newJobs}, Updated: ${result.updated}, Skipped: ${result.skipped}, Failed: ${result.failed}`);
     return result;
   }
 
@@ -298,6 +418,7 @@ export class ScraperService {
     const result: ScrapeResult = {
       success: false,
       newJobs: 0,
+      updated: 0,
       skipped: 0,
       failed: 0,
       timestamp: new Date().toISOString(),
@@ -344,7 +465,7 @@ export class ScraperService {
         title: enriched.title,
         description: enriched.description,
         salary: enriched.salary,
-        location: enriched.location || '',
+        location: normalizeLocation(enriched.location) || '',
         job_type: enriched.jobType,
         application_url: enriched.applicationUrl,
         source_name: 'Manual',

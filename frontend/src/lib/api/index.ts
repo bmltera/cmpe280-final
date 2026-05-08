@@ -78,6 +78,12 @@ export async function updateTrackedJob(trackedJobId: string, updates: { status?:
   }, token);
 }
 
+export async function deleteTrackedJob(trackedJobId: string, token: string) {
+  return fetchApi(`/api/tracked-jobs/${trackedJobId}`, {
+    method: 'DELETE',
+  }, token);
+}
+
 // ========== Admin Endpoints ==========
 
 export async function adminLogin(password: string) {
@@ -87,9 +93,10 @@ export async function adminLogin(password: string) {
   });
 }
 
-export async function getAdminJobs(token: string, page = 1, search = '') {
+export async function getAdminJobs(token: string, page = 1, search = '', salaryOnly = false) {
   const params = new URLSearchParams({ page: String(page), limit: '50' });
   if (search) params.set('search', search);
+  if (salaryOnly) params.set('salaryOnly', 'true');
   return fetchApi<{ jobs: any[]; total: number }>(`/api/admin/jobs?${params}`, {
     headers: { 'x-admin-token': token } as any,
   });
@@ -114,6 +121,27 @@ export async function runAdminSingleScrape(url: string, token: string, company?:
   return fetchApi<any>('/api/admin/scrape/single', {
     method: 'POST',
     body: JSON.stringify({ url, company, title }),
+    headers: { 'x-admin-token': token } as any,
+  });
+}
+
+export async function runAdminCleanup(token: string) {
+  return fetchApi<{ deletedInvalidCompanies: number; fixedMultiLocations: number }>('/api/admin/cleanup', {
+    method: 'POST',
+    headers: { 'x-admin-token': token } as any,
+  });
+}
+
+export async function getAdminSalaryOnly(token: string) {
+  return fetchApi<{ enabled: boolean }>('/api/admin/settings/salary-only', {
+    headers: { 'x-admin-token': token } as any,
+  });
+}
+
+export async function setAdminSalaryOnly(enabled: boolean, token: string) {
+  return fetchApi<{ enabled: boolean }>('/api/admin/settings/salary-only', {
+    method: 'PUT',
+    body: JSON.stringify({ enabled }),
     headers: { 'x-admin-token': token } as any,
   });
 }

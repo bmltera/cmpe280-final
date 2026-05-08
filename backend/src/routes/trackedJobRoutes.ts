@@ -79,4 +79,14 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response) => {
   }
 });
 
+// DELETE /api/tracked-jobs/:id - Remove a tracked job
+router.delete('/:id', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    await jobService.deleteTrackedJob(req.params.id as string, req.userId!);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: 'Failed to delete tracked job' });
+  }
+});
+
 export default router;
