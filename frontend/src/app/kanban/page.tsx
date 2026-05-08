@@ -275,6 +275,10 @@ export default function KanbanPage() {
                   rows={4}
                 />
               </div>
+              <InterviewRoundsSection
+                trackedJobId={selectedJob.id}
+                getToken={getToken}
+              />
               <div className="flex gap-2">
                 <Button className="flex-1" onClick={handleSaveNotes} disabled={saving}>
                   {saving ? 'Saving...' : 'Save Notes'}
