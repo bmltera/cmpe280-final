@@ -1,4 +1,4 @@
-import { ApiResponse } from '@/types';
+import { ApiResponse, InterviewRound, InterviewOutcome } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -76,6 +76,58 @@ export async function updateTrackedJob(trackedJobId: string, updates: { status?:
     method: 'PATCH',
     body: JSON.stringify(updates),
   }, token);
+}
+
+// ========== Interview Rounds Endpoints ==========
+
+export interface InterviewRoundInput {
+  round_name: string;
+  scheduled_at?: string | null;
+  interviewer?: string | null;
+  notes?: string | null;
+  outcome?: InterviewOutcome;
+}
+
+export async function getInterviewRounds(trackedJobId: string, token: string) {
+  return fetchApi<InterviewRound[]>(
+    `/api/interview-rounds?tracked_job_id=${encodeURIComponent(trackedJobId)}`,
+    {},
+    token
+  );
+}
+
+export async function createInterviewRound(
+  trackedJobId: string,
+  input: InterviewRoundInput,
+  token: string
+) {
+  return fetchApi<InterviewRound>(
+    '/api/interview-rounds',
+    {
+      method: 'POST',
+      body: JSON.stringify({ tracked_job_id: trackedJobId, ...input }),
+    },
+    token
+  );
+}
+
+export async function updateInterviewRound(
+  roundId: string,
+  updates: Partial<InterviewRoundInput>,
+  token: string
+) {
+  return fetchApi<InterviewRound>(
+    `/api/interview-rounds/${roundId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    },
+    token
+  );
+}
+
+export async function deleteInterviewRound(roundId: string, token: string) {
+  return fetchApi(`/api/interview-rounds/${roundId}`, { method: 'DELETE' }, token);
 }
 
 // ========== Admin Endpoints ==========
